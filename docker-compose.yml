@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: stock-postgres
+    environment:
+      POSTGRES_DB: stock_data
+      POSTGRES_USER: stockuser
+      POSTGRES_PASSWORD: changeme123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stockuser -d stock_data"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Stock Orchestrator
+  orchestrator:
+    build:
+      context: ./orchestrator
+      dockerfile: Dockerfile
+    container_name: stock-orchestrator
+    ports:
+      - "8080:8080"
+    environment:
+      FINNHUB_TOKEN: ${FINNHUB_TOKEN}
+    restart: unless-stopped
+
+  # Stock Data Fetcher Service (Worker 1)
+  data-fetcher-1:
+    build:
+      context: ./data_fetching_service
+      dockerfile: Dockerfile
+    container_name: stock-data-fetcher-1
+    ports:
+      - "8001:8000"
+    environment:
+      DATABASE_URL: postgresql://stockuser:changeme123@postgres:5432/stock_data
+      ORCHESTRATOR_URL: http://orchestrator:8080
+      WORKER_ID: worker-1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      orchestrator:
+        condition: service_started
+    restart: unless-stopped
+    command: >
+      sh -c "python main.py & python worker_scheduler.py"
+
+volumes:
+  postgres_data:

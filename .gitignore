@@ -1,0 +1,5 @@
+.env
+.pytest_cache
+.venv
+*secret.yaml
+__pycache__
