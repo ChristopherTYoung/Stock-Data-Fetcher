@@ -61,6 +61,20 @@ class Stock(Base):
         return f"<Stock(symbol={self.symbol}, company={self.company_name})>"
 
 
+class Blacklist(Base):
+    """Blacklist table model for storing blacklisted stock gaps."""
+    __tablename__ = "blacklist"
+    __table_args__ = {'schema': 'incrementum'}
+    
+    id = Column("id", Integer, primary_key=True, autoincrement=True)
+    stock_symbol = Column("stock_symbol", String(10), nullable=False)
+    timestamp = Column("timestamp", DateTime, nullable=False)
+    time_added = Column("time_added", DateTime, nullable=False)
+    
+    def __repr__(self):
+        return f"<Blacklist(symbol={self.stock_symbol}, timestamp={self.timestamp}, added={self.time_added})>"
+
+
 def init_db():
     """Create all tables in the database."""
     try:

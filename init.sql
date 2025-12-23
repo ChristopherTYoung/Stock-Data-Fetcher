@@ -85,3 +85,12 @@ alter table incrementum.custom_collection_stock
 
 alter table incrementum.custom_collection_stock
     add constraint custom_collection_stock_collection_id_stock_symbol_key unique (collection_id, stock_symbol);
+
+create table if not exists incrementum.blacklist (
+    id int primary key generated always as identity,
+    stock_symbol varchar(10) not null,
+    timestamp timestamp not null,
+    time_added timestamp not null,
+    foreign key (stock_symbol) references incrementum.stock(symbol) on delete cascade,
+    unique (stock_symbol, timestamp)
+);

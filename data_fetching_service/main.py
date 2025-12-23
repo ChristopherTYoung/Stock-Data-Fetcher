@@ -7,12 +7,14 @@ import logging
 import time
 import asyncio
 import yfinance as yf
+from data_fetching_service import gap_detector
 from database import get_db, StockHistory, Stock, init_db
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Stock Data Fetcher", version="1.0.0")
+gap_detection_unit = gap_detector()
 rate_limited = False
 rate_limit_reset_time = None
 
@@ -311,6 +313,29 @@ async def rate_limit_status():
         "status": "available",
         "message": "Service is available"
     }
+    
+@app.get("/check-gaps/{ticker}")
+async def check_gaps(ticker: str):
+    """Check for data gaps in a stock's historical data."""
+    try:
+        gaps = gap_detection_unit.check_for_gaps(ticker.upper())
+        
+        return {
+            "ticker": ticker.upper(),
+            "gaps_found": len(gaps),
+            "gaps": [
+                {
+                    "start": gap[0].isoformat(),
+                    "end": gap[1].isoformat(),
+                    "is_hourly": gap[2],
+                    "duration_days": (gap[1] - gap[0]).days
+                }
+                for gap in gaps
+            ]
+        }
+    except Exception as e:
+        logger.error(f"Error checking gaps for {ticker}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error checking gaps: {str(e)}")
 
 @app.post("/fetch-stock-data")
 async def fetch_stock_data(request: StockDataRequest):
