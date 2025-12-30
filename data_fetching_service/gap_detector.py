@@ -77,8 +77,7 @@ class GapDetector:
         """
         if not gaps:
             return gaps
-        
-        # Get all blacklist entries for this symbol
+
         blacklist_entries = db.execute(
             select(self.Blacklist.timestamp, self.Blacklist.time_added)
             .where(self.Blacklist.stock_symbol == symbol)
@@ -86,21 +85,16 @@ class GapDetector:
         
         if not blacklist_entries:
             return gaps
-        
-        # Calculate expiration cutoff time
+
         expiration_cutoff = datetime.now() - timedelta(hours=self.blacklist_expiration_time)
         
-        # Create a set of blacklisted timestamps that are still valid (not expired)
-        # Normalize timestamps to remove microseconds for comparison
         active_blacklist = {
             entry[0].replace(microsecond=0) for entry in blacklist_entries
             if entry[1] >= expiration_cutoff
         }
-        
-        # Filter gaps - keep only those not in active blacklist
+
         filtered_gaps = []
         for gap_start, gap_end, is_hourly in gaps:
-            # Normalize gap_start for comparison (remove microseconds)
             normalized_gap_start = gap_start.replace(microsecond=0)
             
             if normalized_gap_start not in active_blacklist:
@@ -123,7 +117,6 @@ class GapDetector:
         """
         gaps = []
         
-        # Get all hourly data points for the symbol, ordered by time
         hourly_data = db.execute(
             select(self.StockHistory.day_and_time)
             .where(and_(
@@ -134,36 +127,28 @@ class GapDetector:
         ).fetchall()
         
         if not hourly_data:
-            # No hourly data exists - entire 2 years is a gap
             end_time = datetime.now()
             start_time = end_time - timedelta(days=730)  # 2 years
             gaps.append((start_time, end_time, True))
             logger.info(f"No hourly data found for {symbol}, gap from {start_time} to {end_time}")
             return gaps
-        
-        # Check for gaps between consecutive data points
-        # Hourly data should have data points roughly every hour during market hours
+
         for i in range(len(hourly_data) - 1):
             current_time = hourly_data[i][0]
             next_time = hourly_data[i + 1][0]
-            
-            # Calculate expected time difference
-            # Allow for weekends and market hours (typically 6.5 hours per trading day)
+
             time_diff = next_time - current_time
-            
-            # If gap is more than 1 week, consider it a gap (accounting for holidays/weekends)
+
             if time_diff > timedelta(days=7):
                 gaps.append((current_time, next_time, True))
                 logger.info(f"Hourly gap found for {symbol}: {current_time} to {next_time}")
-        
-        # Check if we have data up to 2 years ago
+
         oldest_time = hourly_data[0][0]
         two_years_ago = datetime.now() - timedelta(days=730)
         if oldest_time > two_years_ago:
             gaps.append((two_years_ago, oldest_time, True))
             logger.info(f"Historical hourly gap for {symbol}: {two_years_ago} to {oldest_time}")
-        
-        # Check if we have recent data (within last week)
+
         newest_time = hourly_data[-1][0]
         one_week_ago = datetime.now() - timedelta(days=7)
         if newest_time < one_week_ago:
@@ -184,8 +169,7 @@ class GapDetector:
             List of gaps in format (gap_start, gap_end, False) where False indicates minute data
         """
         gaps = []
-        
-        # Get all minute data points for the symbol, ordered by time
+
         minute_data = db.execute(
             select(self.StockHistory.day_and_time)
             .where(and_(
@@ -196,35 +180,28 @@ class GapDetector:
         ).fetchall()
         
         if not minute_data:
-            # No minute data exists - entire month is a gap
             end_time = datetime.now()
             start_time = end_time - timedelta(days=30)
             gaps.append((start_time, end_time, False))
             logger.info(f"No minute data found for {symbol}, gap from {start_time} to {end_time}")
             return gaps
-        
-        # Check for gaps between consecutive data points
-        # Minute data should have data points every minute during market hours
+
         for i in range(len(minute_data) - 1):
             current_time = minute_data[i][0]
             next_time = minute_data[i + 1][0]
             
             time_diff = next_time - current_time
-            
-            # If gap is more than 1 day, consider it a significant gap
-            # (accounting for weekends and overnight gaps)
+
             if time_diff > timedelta(days=1):
                 gaps.append((current_time, next_time, False))
                 logger.info(f"Minute gap found for {symbol}: {current_time} to {next_time}")
-        
-        # Check if we have data up to 30 days ago
+
         oldest_time = minute_data[0][0]
         thirty_days_ago = datetime.now() - timedelta(days=30)
         if oldest_time > thirty_days_ago:
             gaps.append((thirty_days_ago, oldest_time, False))
             logger.info(f"Historical minute gap for {symbol}: {thirty_days_ago} to {oldest_time}")
-        
-        # Check if we have recent data (within last day)
+
         newest_time = minute_data[-1][0]
         one_day_ago = datetime.now() - timedelta(days=1)
         if newest_time < one_day_ago:

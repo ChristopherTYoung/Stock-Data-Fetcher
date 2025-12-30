@@ -7,8 +7,8 @@ import logging
 from datetime import datetime
 import os
 
-# Import the data fetching function from main.py
-from main import fetch_all_tickers_historical_data
+# Import the DataFetcher class
+from data_fetcher import DataFetcher
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 ORCHESTRATOR_URL = os.getenv("ORCHESTRATOR_URL", "http://localhost:8080")
 WORKER_ID = os.getenv("WORKER_ID", "worker-1")
 FETCH_INTERVAL_SECONDS = 3600  # 1 hour
+
+# Create a DataFetcher instance
+data_fetcher = DataFetcher()
 
 
 async def fetch_batch_from_orchestrator() -> list:
@@ -41,7 +44,7 @@ async def fetch_batch_from_orchestrator() -> list:
 
 
 async def process_stock_batch(tickers: list):
-    """Process stock batch using main.py's fetch function."""
+    """Process stock batch using DataFetcher class."""
     if not tickers:
         logger.info("No tickers to process")
         return
@@ -49,10 +52,10 @@ async def process_stock_batch(tickers: list):
     try:
         logger.info(f"Processing {len(tickers)} tickers...")
         
-        # Use the actual data fetching function from main.py
+        # Use the DataFetcher instance to fetch data
         # This fetches 2 years of hourly data + 1 month of minute data
         end_date = datetime.now()
-        results = fetch_all_tickers_historical_data(tickers, end_date)
+        results = data_fetcher.fetch_all_tickers_historical_data(tickers, end_date)
         
         summary = results.get("summary", {})
         logger.info(
