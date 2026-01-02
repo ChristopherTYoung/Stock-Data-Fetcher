@@ -7,6 +7,7 @@ import time
 import yfinance as yf
 from database import get_db, StockHistory, Stock, Blacklist
 from gap_detector import GapDetector
+from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +153,7 @@ class DataFetcher:
         
         return rows_inserted
 
-    def fetch_ticker_hourly_data(self, ticker: str, max_retries: int = 3) -> pd.DataFrame:
+    def fetch_ticker_hourly_data(self, start_date: datetime, end_date: datetime, ticker: str, max_retries: int = 3) -> pd.DataFrame:
         """Fetch 2 years of hourly data for a ticker."""
         for attempt in range(max_retries):
             try:
@@ -231,10 +232,8 @@ class DataFetcher:
                 }
             }
         
-        minute_start_date = end_date - timedelta(days=30)
         
         logger.info(f"Fetching data for {len(tickers)} tickers:")
-        logger.info(f"  - Minute: {minute_start_date.date()} to {end_date.date()} (1 month)")
         
         results = {}
         failed_tickers = []
@@ -242,17 +241,24 @@ class DataFetcher:
         
         for idx, ticker in enumerate(tickers, 1):
             try:
+                stock = None
+                with get_db() as db:
+                    stock = db.execute(select(Stock).where(Stock.symbol == "AAPL")).first()
                 logger.info(f"Processing {ticker} ({idx}/{len(tickers)})")
                 ticker_rows = 0
-                
+                start_date = end_date - timedelta(days=730)
+                if(stock is not None and stock.updated_at is not None):
+                    start_date = stock.updated_at
                 # Fetch hourly data (2 years)
                 logger.info(f"  Fetching 2 years of hourly data for {ticker}...")
-                hourly_df = self.fetch_ticker_hourly_data(ticker)
+                hourly_df = self.fetch_ticker_hourly_data(ticker, start_date, end_date)
                 if not hourly_df.empty:
                     rows = self.save_stock_data_to_db(ticker, hourly_df, is_hourly=True)
                     ticker_rows += rows
                     logger.info(f"  Saved {rows} hourly rows for {ticker}")
-                
+                minute_start_date = end_date - timedelta(days=28)
+                if(stock is not None and stock.updated_at is not None):
+                    minute_start_date = stock.updated_at
                 # Fetch minute data (1 month)
                 logger.info(f"  Fetching 1 month of minute data for {ticker}...")
                 minute_df = self.fetch_ticker_minute_data(ticker, minute_start_date, end_date)
