@@ -7,6 +7,8 @@ import finnhub
 import os
 from datetime import datetime, timedelta
 import asyncio
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -14,14 +16,22 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Stock Orchestrator", version="1.0.0")
 
 # Global state
-stock_queue: List[str] = []
-processed_stocks: List[str] = []
-queue_lock = threading.Lock()
+# History updates queue
+history_queue: List[str] = []
+history_processed: List[str] = []
+history_lock = threading.Lock()
+
+# Gap detection queue
+gap_detection_queue: List[str] = []
+gap_detection_processed: List[str] = []
+gap_detection_lock = threading.Lock()
+
 last_refresh_time: Optional[datetime] = None
 finnhub_client: Optional[finnhub.Client] = None
+scheduler = AsyncIOScheduler()
 
 # Configuration
-STOCKS_PER_REQUEST = 500
+STOCKS_PER_REQUEST = 1000
 REFRESH_INTERVAL_HOURS = 24  # Refresh stock list every 24 hours
 
 
@@ -37,8 +47,8 @@ class StockBatchResponse(BaseModel):
 class OrchestratorStatus(BaseModel):
     """Status of the orchestrator."""
     total_stocks: int
-    remaining_in_queue: int
-    total_processed: int
+    history_updates: Dict[str, int]
+    gap_detection: Dict[str, int]
     last_refresh: Optional[str]
     next_refresh: Optional[str]
 
@@ -84,43 +94,66 @@ def fetch_stock_list_from_finnhub() -> List[str]:
 
 
 def refresh_stock_queue():
-    """Refresh the stock queue with latest list from Finnhub."""
-    global stock_queue, processed_stocks, last_refresh_time
+    """Refresh both stock queues with latest list from Finnhub."""
+    global history_queue, history_processed, gap_detection_queue, gap_detection_processed, last_refresh_time
     
-    with queue_lock:
-        try:
-            # Fetch fresh list from Finnhub
-            tickers = fetch_stock_list_from_finnhub()
-            
-            # Reset queues
-            stock_queue = tickers.copy()
-            processed_stocks = []
-            last_refresh_time = datetime.now()
-            
-            logger.info(f"Stock queue refreshed with {len(stock_queue)} tickers")
-            
-        except Exception as e:
-            logger.error(f"Failed to refresh stock queue: {str(e)}")
-            raise
+    try:
+        # Fetch fresh list from Finnhub
+        tickers = fetch_stock_list_from_finnhub()
+        
+        # Reset history updates queue
+        with history_lock:
+            history_queue = tickers.copy()
+            history_processed = []
+        
+        # Reset gap detection queue
+        with gap_detection_lock:
+            gap_detection_queue = tickers.copy()
+            gap_detection_processed = []
+        
+        last_refresh_time = datetime.now()
+        
+        logger.info(f"Both queues refreshed with {len(tickers)} tickers")
+        
+    except Exception as e:
+        logger.error(f"Failed to refresh stock queues: {str(e)}")
+        raise
 
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize on startup."""
-    logger.info("Starting Stock Orchestrator for one-time bulk download...")
+    logger.info("Starting Stock Orchestrator with scheduled daily refresh...")
     
     try:
-        # Initialize Finnhub client
         init_finnhub_client()
         
-        # Load stock list (one-time only, no refresh)
         refresh_stock_queue()
         
-        logger.info(f"Stock Orchestrator started successfully with {len(stock_queue)} stocks queued")
+        scheduler.add_job(
+            refresh_stock_queue,
+            trigger=CronTrigger(hour=0, minute=0),
+            id='daily_stock_refresh',
+            name='Daily Stock List Refresh',
+            replace_existing=True
+        )
+
+        scheduler.start()
+        
+        logger.info(f"Stock Orchestrator started successfully")
+        logger.info(f"History queue: {len(history_queue)} stocks | Gap detection queue: {len(gap_detection_queue)} stocks")
+        logger.info("Scheduled daily refresh at 12:00 AM UTC")
         
     except Exception as e:
         logger.error(f"Failed to start orchestrator: {str(e)}")
         raise
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown."""
+    scheduler.shutdown()
+    logger.info("Scheduler shut down")
 
 
 @app.get("/")
@@ -142,51 +175,99 @@ async def health():
 @app.get("/status", response_model=OrchestratorStatus)
 async def get_status():
     """Get current status of the orchestrator."""
-    with queue_lock:
-        next_refresh = None
-        if last_refresh_time:
-            next_refresh = (last_refresh_time + timedelta(hours=REFRESH_INTERVAL_HOURS)).isoformat()
-        
-        return OrchestratorStatus(
-            total_stocks=len(stock_queue) + len(processed_stocks),
-            remaining_in_queue=len(stock_queue),
-            total_processed=len(processed_stocks),
-            last_refresh=last_refresh_time.isoformat() if last_refresh_time else None,
-            next_refresh=next_refresh
-        )
+    with history_lock:
+        history_remaining = len(history_queue)
+        history_total_processed = len(history_processed)
+    
+    with gap_detection_lock:
+        gap_remaining = len(gap_detection_queue)
+        gap_total_processed = len(gap_detection_processed)
+    
+    next_refresh = None
+    if last_refresh_time:
+        next_refresh = (last_refresh_time + timedelta(hours=REFRESH_INTERVAL_HOURS)).isoformat()
+    
+    total_stocks = history_remaining + history_total_processed
+    
+    return OrchestratorStatus(
+        total_stocks=total_stocks,
+        history_updates={
+            "remaining": history_remaining,
+            "processed": history_total_processed
+        },
+        gap_detection={
+            "remaining": gap_remaining,
+            "processed": gap_total_processed
+        },
+        last_refresh=last_refresh_time.isoformat() if last_refresh_time else None,
+        next_refresh=next_refresh
+    )
 
 
 @app.post("/get-batch", response_model=StockBatchResponse)
 async def get_stock_batch(worker_id: Optional[str] = None):
-    with queue_lock:
-        if not stock_queue:
-            logger.info(f"No stocks remaining in queue (Worker: {worker_id})")
+    """Get batch of stocks for history updates."""
+    with history_lock:
+        if not history_queue:
+            logger.info(f"No stocks remaining in history queue (Worker: {worker_id})")
             return StockBatchResponse(
                 tickers=[],
                 batch_size=0,
                 remaining_in_queue=0,
-                total_processed=len(processed_stocks),
+                total_processed=len(history_processed),
                 timestamp=datetime.now().isoformat()
             )
+
+        batch_size = min(STOCKS_PER_REQUEST, len(history_queue))
+        batch = history_queue[:batch_size]
         
-        # Get batch of stocks
-        batch_size = min(STOCKS_PER_REQUEST, len(stock_queue))
-        batch = stock_queue[:batch_size]
-        
-        # Remove from queue and add to processed
-        stock_queue[:batch_size] = []
-        processed_stocks.extend(batch)
+        history_queue[:batch_size] = []
+        history_processed.extend(batch)
         
         logger.info(
-            f"Allocated {len(batch)} stocks to worker {worker_id or 'unknown'}. "
-            f"Remaining: {len(stock_queue)}, Processed: {len(processed_stocks)}"
+            f"[HISTORY] Allocated {len(batch)} stocks to worker {worker_id or 'unknown'}. "
+            f"Remaining: {len(history_queue)}, Processed: {len(history_processed)}"
         )
         
         return StockBatchResponse(
             tickers=batch,
             batch_size=len(batch),
-            remaining_in_queue=len(stock_queue),
-            total_processed=len(processed_stocks),
+            remaining_in_queue=len(history_queue),
+            total_processed=len(history_processed),
+            timestamp=datetime.now().isoformat()
+        )
+
+
+@app.post("/get-gap-detection-batch", response_model=StockBatchResponse)
+async def get_gap_detection_batch(worker_id: Optional[str] = None):
+    """Get batch of stocks for gap detection."""
+    with gap_detection_lock:
+        if not gap_detection_queue:
+            logger.info(f"No stocks remaining in gap detection queue (Worker: {worker_id})")
+            return StockBatchResponse(
+                tickers=[],
+                batch_size=0,
+                remaining_in_queue=0,
+                total_processed=len(gap_detection_processed),
+                timestamp=datetime.now().isoformat()
+            )
+
+        batch_size = min(STOCKS_PER_REQUEST, len(gap_detection_queue))
+        batch = gap_detection_queue[:batch_size]
+        
+        gap_detection_queue[:batch_size] = []
+        gap_detection_processed.extend(batch)
+        
+        logger.info(
+            f"[GAP DETECTION] Allocated {len(batch)} stocks to worker {worker_id or 'unknown'}. "
+            f"Remaining: {len(gap_detection_queue)}, Processed: {len(gap_detection_processed)}"
+        )
+        
+        return StockBatchResponse(
+            tickers=batch,
+            batch_size=len(batch),
+            remaining_in_queue=len(gap_detection_queue),
+            total_processed=len(gap_detection_processed),
             timestamp=datetime.now().isoformat()
         )
 
@@ -203,8 +284,9 @@ async def force_refresh():
         
         return {
             "success": True,
-            "message": "Stock queue refreshed successfully",
-            "total_stocks": len(stock_queue),
+            "message": "Both queues refreshed successfully",
+            "history_queue": len(history_queue),
+            "gap_detection_queue": len(gap_detection_queue),
             "timestamp": datetime.now().isoformat()
         }
         
@@ -216,23 +298,27 @@ async def force_refresh():
 @app.post("/reset")
 async def reset_queue():
     """
-    Reset the processed stocks back to the queue.
+    Reset the processed stocks back to both queues.
     
     Useful for re-processing all stocks.
     """
-    with queue_lock:
-        # Move all processed stocks back to queue
-        stock_queue.extend(processed_stocks)
-        processed_stocks.clear()
-        
-        logger.info(f"Queue reset. Total stocks in queue: {len(stock_queue)}")
-        
-        return {
-            "success": True,
-            "message": "Queue reset successfully",
-            "total_in_queue": len(stock_queue),
-            "timestamp": datetime.now().isoformat()
-        }
+    with history_lock:
+        history_queue.extend(history_processed)
+        history_processed.clear()
+    
+    with gap_detection_lock:
+        gap_detection_queue.extend(gap_detection_processed)
+        gap_detection_processed.clear()
+    
+    logger.info(f"Queues reset. History: {len(history_queue)}, Gap detection: {len(gap_detection_queue)}")
+    
+    return {
+        "success": True,
+        "message": "Both queues reset successfully",
+        "history_queue": len(history_queue),
+        "gap_detection_queue": len(gap_detection_queue),
+        "timestamp": datetime.now().isoformat()
+    }
 
 
 if __name__ == "__main__":
