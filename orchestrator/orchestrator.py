@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import logging
 import threading
-import finnhub
+from polygon import RESTClient
 import os
 from datetime import datetime, timedelta
 import asyncio
@@ -15,24 +15,20 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Stock Orchestrator", version="1.0.0")
 
-# Global state
-# History updates queue
 history_queue: List[str] = []
 history_processed: List[str] = []
 history_lock = threading.Lock()
 
-# Gap detection queue
 gap_detection_queue: List[str] = []
 gap_detection_processed: List[str] = []
 gap_detection_lock = threading.Lock()
 
 last_refresh_time: Optional[datetime] = None
-finnhub_client: Optional[finnhub.Client] = None
+polygon_client: Optional[RESTClient] = None
 scheduler = AsyncIOScheduler()
 
-# Configuration
 STOCKS_PER_REQUEST = 1000
-REFRESH_INTERVAL_HOURS = 24  # Refresh stock list every 24 hours
+REFRESH_INTERVAL_HOURS = 24
 
 
 class StockBatchResponse(BaseModel):
@@ -53,60 +49,77 @@ class OrchestratorStatus(BaseModel):
     next_refresh: Optional[str]
 
 
-def init_finnhub_client():
-    """Initialize Finnhub client with API token."""
-    global finnhub_client
+def init_polygon_client():
+    """Initialize Polygon client with API key."""
+    global polygon_client
     
-    token = os.getenv("FINNHUB_TOKEN")
-    if not token:
-        logger.error("FINNHUB_TOKEN environment variable not set")
-        raise ValueError("FINNHUB_TOKEN is required")
+    api_key = os.getenv("POLYGON_API_KEY")
+    if not api_key:
+        logger.error("POLYGON_API_KEY environment variable not set")
+        raise ValueError("POLYGON_API_KEY is required")
     
-    finnhub_client = finnhub.Client(api_key=token)
-    logger.info("Finnhub client initialized")
+    polygon_client = RESTClient(api_key=api_key)
+    logger.info("Polygon client initialized")
 
 
-def fetch_stock_list_from_finnhub() -> List[str]:
-    """Fetch list of all US stocks from Finnhub."""
-    if not finnhub_client:
-        raise ValueError("Finnhub client not initialized")
+def fetch_stock_list_from_polygon() -> List[str]:
+    """Fetch list of all US stocks from Polygon."""
+    if not polygon_client:
+        raise ValueError("Polygon client not initialized")
     
     try:
-        logger.info("Fetching stock list from Finnhub...")
+        logger.info("Fetching stock list from Polygon...")
         
-        us_stocks = finnhub_client.stock_symbols('US')
+        tickers = []
+        next_url = None
+        page_count = 0
         
-        tickers = [
-            stock['symbol'] 
-            for stock in us_stocks 
-            if (stock['symbol'] and
-                len(stock['symbol']) <= 10 and
-                not stock['symbol'].startswith('$') and
-                not stock['symbol'].startswith('^'))
-        ]
+        while True:
+            if next_url:
+                response = polygon_client.list_tickers(next_url=next_url)
+            else:
+                response = polygon_client.list_tickers(
+                    market='stocks',
+                    active=True,
+                    limit=1000
+                )
+
+            for ticker in response:
+                if hasattr(ticker, 'locale') and ticker.locale == 'us':
+                    symbol = ticker.ticker
+
+                    if (symbol and
+                        not symbol.startswith('$') and
+                        not symbol.startswith('^')):
+                        tickers.append(symbol)
+            
+            page_count += 1
+            logger.info(f"Page {page_count}: Fetched {len(tickers)} tickers so far...")
+
+            if hasattr(response, 'next_url') and response.next_url:
+                next_url = response.next_url
+            else:
+                break
         
-        logger.info(f"Fetched {len(tickers)} stocks from US exchanges")
+        logger.info(f"Fetched {len(tickers)} US stocks from Polygon across {page_count} pages")
         return tickers
         
     except Exception as e:
-        logger.error(f"Error fetching stocks from Finnhub: {str(e)}")
+        logger.error(f"Error fetching stocks from Polygon: {str(e)}")
         raise
 
 
 def refresh_stock_queue():
-    """Refresh both stock queues with latest list from Finnhub."""
+    """Refresh both stock queues with latest list from Polygon."""
     global history_queue, history_processed, gap_detection_queue, gap_detection_processed, last_refresh_time
     
     try:
-        # Fetch fresh list from Finnhub
-        tickers = fetch_stock_list_from_finnhub()
-        
-        # Reset history updates queue
+        tickers = fetch_stock_list_from_polygon()
+
         with history_lock:
             history_queue = tickers.copy()
             history_processed = []
-        
-        # Reset gap detection queue
+
         with gap_detection_lock:
             gap_detection_queue = tickers.copy()
             gap_detection_processed = []
@@ -126,7 +139,7 @@ async def startup_event():
     logger.info("Starting Stock Orchestrator with scheduled daily refresh...")
     
     try:
-        init_finnhub_client()
+        init_polygon_client()
         
         refresh_stock_queue()
         
@@ -277,7 +290,7 @@ async def force_refresh():
     """
     Manually trigger a refresh of the stock list.
     
-    This will fetch the latest stock list from Finnhub and reset the queue.
+    This will fetch the latest stock list from Polygon and reset the queue.
     """
     try:
         refresh_stock_queue()

@@ -1,15 +1,18 @@
 """Data fetching service for stock data using yfinance."""
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import List, Dict, Any, Tuple
 import pandas as pd
 import logging
 import time
 import yfinance as yf
+from polygon import RESTClient
 from database import get_db, StockHistory, Stock, Blacklist
 from gap_detector import GapDetector
 from sqlalchemy import select
+import os
 
 logger = logging.getLogger(__name__)
+API_KEY = os.environ.get('POLYGON_API_KEY')
 
 
 class DataFetcher:
@@ -21,13 +24,14 @@ class DataFetcher:
         self.gap_detector = GapDetector()
         self.max_gap_fill_retries = max_gap_fill_retries
     
-    def add_to_blacklist(self, ticker: str, gap_start: datetime) -> None:
+    def add_to_blacklist(self, ticker: str, gap_start: datetime, is_hourly: bool = True) -> None:
         """Add a gap to the blacklist."""
         with get_db() as db:
             blacklist_entry = Blacklist(
                 stock_symbol=ticker,
                 timestamp=gap_start,
-                time_added=datetime.now()
+                time_added=datetime.now(),
+                is_hourly=is_hourly
             )
             db.add(blacklist_entry)
             db.commit()
@@ -77,16 +81,13 @@ class DataFetcher:
         """Ensure the stock exists in the stock table. If not, fetch company name and insert."""
         from sqlalchemy import select
         
-        # Check if stock already exists
         result = db.execute(select(Stock).where(Stock.symbol == ticker)).first()
         
         if result is None:
-            # Stock doesn't exist, fetch company info from yfinance
             try:
                 stock_info = yf.Ticker(ticker)
                 company_name = stock_info.info.get('longName', stock_info.info.get('shortName', ticker))
                 
-                # Create new stock record
                 new_stock = Stock(
                     symbol=ticker,
                     company_name=company_name,
@@ -97,7 +98,6 @@ class DataFetcher:
                 logger.info(f"Added stock {ticker} ({company_name}) to stock table")
             except Exception as e:
                 logger.warning(f"Could not fetch company name for {ticker}, using ticker as name: {e}")
-                # Fallback: use ticker as company name
                 new_stock = Stock(
                     symbol=ticker,
                     company_name=ticker,
@@ -120,7 +120,18 @@ class DataFetcher:
             
             for timestamp, row in df.iterrows():
                 try:
-                    # Handle both uppercase (yfinance) and lowercase column names
+                    existing = db.execute(
+                        select(StockHistory).where(
+                            StockHistory.stock_symbol == ticker,
+                            StockHistory.day_and_time == timestamp,
+                            StockHistory.is_hourly == is_hourly
+                        )
+                    ).first()
+                    
+                    if existing:
+                        logger.debug(f"Skipping duplicate record for {ticker} at {timestamp}")
+                        continue
+                    
                     open_col = 'Open' if 'Open' in row else 'open'
                     close_col = 'Close' if 'Close' in row else 'close'
                     high_col = 'High' if 'High' in row else 'high'
@@ -130,7 +141,7 @@ class DataFetcher:
                     stock_record = StockHistory(
                         stock_symbol=ticker,
                         day_and_time=timestamp,
-                        open_price=int(row[open_col] * 100),  # Convert to cents
+                        open_price=int(row[open_col] * 100),
                         close_price=int(row[close_col] * 100),
                         high=int(row[high_col] * 100),
                         low=int(row[low_col] * 100),
@@ -142,80 +153,44 @@ class DataFetcher:
                 except Exception as e:
                     logger.error(f"Error inserting row for {ticker} at {timestamp}: {str(e)}")
                     continue
-            
-            # Commit in batches for better performance
+
             if rows_inserted > 0:
                 db.commit()
                 logger.info(f"✓ SAVED {rows_inserted} rows for {ticker} (is_hourly={is_hourly})")
             else:
-                logger.error(f"✗ FAILED to save any data for {ticker} (is_hourly={is_hourly})")
-                raise Exception(f"Failed to insert any rows for {ticker}")
+                logger.warning(f"No new rows to save for {ticker} (is_hourly={is_hourly}) - all records already exist")
         
         return rows_inserted
 
-    def fetch_ticker_hourly_data(self, start_date: datetime, end_date: datetime, ticker: str, max_retries: int = 3) -> pd.DataFrame:
-        """Fetch 2 years of hourly data for a ticker."""
-        for attempt in range(max_retries):
-            try:
-                logger.info(f"Fetching hourly data for {ticker} (attempt {attempt + 1}/{max_retries})")
-                df = yf.download(
-                    tickers=[ticker],
-                    period="2y",
-                    interval='1h'
-                )
-                
-                if not df.empty:
-                    logger.info(f"Fetched {len(df)} hourly rows for {ticker}")
-                    return df
-                
-                if attempt < max_retries - 1:
-                    time.sleep(5)
-                    
-            except Exception as e:
-                logger.error(f"Error fetching hourly data for {ticker}: {str(e)}")
-                if attempt < max_retries - 1:
-                    time.sleep(5)
-        time.sleep(3)
-        
-        return pd.DataFrame()
+    def get_historical_data(self, ticker, from_date, to_date, timespan='day', multiplier=1):
+        """Fetch historical data from Polygon API."""
+        client = RESTClient(api_key=API_KEY)
 
-    def fetch_ticker_minute_data(self, ticker: str, start_date: datetime, end_date: datetime, max_retries: int = 3) -> pd.DataFrame:
-        """Fetch minute-level data for a ticker within a date range."""
-        all_data = []
-        current_start = start_date
+        aggs = client.list_aggs(
+            ticker=ticker,
+            multiplier=multiplier,
+            timespan=timespan,
+            from_=from_date,
+            to=to_date,
+            adjusted=True,
+            sort="asc"
+        )
 
-        while current_start < end_date:
-            current_end = min(current_start + timedelta(days=6), end_date)
-            
-            for attempt in range(max_retries):
-                try:
-                    logger.info(f"Fetching minute data for {ticker} from {current_start.date()} to {current_end.date()}")
-                    df = yf.download(
-                        tickers=ticker,
-                        start=current_start.strftime('%Y-%m-%d'),
-                        end=current_end.strftime('%Y-%m-%d'),
-                        interval='1m'
-                    )
-                    
-                    if not df.empty:
-                        all_data.append(df)
-                        logger.info(f"Fetched {len(df)} minute rows for {ticker}")
-                    break
-                    
-                except Exception as e:
-                    logger.error(f"Error fetching minute data for {ticker}: {str(e)}")
-                    if attempt < max_retries - 1:
-                        time.sleep(5)
-            
-            current_start = current_end
-            time.sleep(3)  # Delay between chunks
-        
-        if all_data:
-            combined_df = pd.concat(all_data)
-            logger.info(f"Total minute data for {ticker}: {len(combined_df)} rows")
-            return combined_df
-        
-        return pd.DataFrame()
+        data = []
+        for bar in aggs:
+            data.append({
+                'timestamp': datetime.fromtimestamp(bar.timestamp/1000),
+                'open': bar.open,
+                'high': bar.high,
+                'low': bar.low,
+                'close': bar.close,
+                'volume': bar.volume
+            })
+
+        df = pd.DataFrame(data)
+        if not df.empty:
+            df.set_index('timestamp', inplace=True)
+        return df
 
     def fetch_all_tickers_historical_data(self, tickers: List[str], end_date: datetime) -> Dict[str, Any]:
         """Fetch 2 years of hourly data + 1 month of minute data for tickers."""
@@ -243,15 +218,15 @@ class DataFetcher:
             try:
                 stock = None
                 with get_db() as db:
-                    stock = db.execute(select(Stock).where(Stock.symbol == "AAPL")).first()
+                    stock = db.execute(select(Stock).where(Stock.symbol == ticker)).first()
                 logger.info(f"Processing {ticker} ({idx}/{len(tickers)})")
                 ticker_rows = 0
                 start_date = end_date - timedelta(days=730)
                 if(stock is not None and stock.updated_at is not None):
                     start_date = stock.updated_at
-                # Fetch hourly data (2 years)
+                
                 logger.info(f"  Fetching 2 years of hourly data for {ticker}...")
-                hourly_df = self.fetch_ticker_hourly_data(ticker, start_date, end_date)
+                hourly_df = self.get_historical_data(ticker, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), timespan='hour', multiplier=1)
                 if not hourly_df.empty:
                     rows = self.save_stock_data_to_db(ticker, hourly_df, is_hourly=True)
                     ticker_rows += rows
@@ -259,9 +234,9 @@ class DataFetcher:
                 minute_start_date = end_date - timedelta(days=28)
                 if(stock is not None and stock.updated_at is not None):
                     minute_start_date = stock.updated_at
-                # Fetch minute data (1 month)
+
                 logger.info(f"  Fetching 1 month of minute data for {ticker}...")
-                minute_df = self.fetch_ticker_minute_data(ticker, minute_start_date, end_date)
+                minute_df = self.get_historical_data(ticker, minute_start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), timespan='minute', multiplier=1)
                 if not minute_df.empty:
                     rows = self.save_stock_data_to_db(ticker, minute_df, is_hourly=False)
                     ticker_rows += rows
@@ -284,8 +259,7 @@ class DataFetcher:
                     }
                     failed_tickers.append(ticker)
                     logger.error(f"✗✗✗ FAILED: {ticker} - No data fetched from yfinance")
-                
-                # Delay between tickers to avoid rate limiting
+
                 if idx < len(tickers):
                     time.sleep(3)
                     
@@ -322,8 +296,7 @@ class DataFetcher:
         ticker = ticker.upper()
         max_retries = max_retries or self.max_gap_fill_retries
         logger.info(f"Detecting gaps for {ticker}...")
-        
-        # Detect gaps
+
         gaps = self.gap_detector.check_for_gaps(ticker)
         
         if not gaps:
@@ -351,14 +324,9 @@ class DataFetcher:
                     logger.info(f"Filling gap for {ticker}: {gap_start} to {gap_end} (hourly={is_hourly}){retry_msg}")
                     
                     if is_hourly:
-                        # For hourly gaps, fetch hourly data
-                        df = self.fetch_ticker_hourly_data(ticker)
-                        if not df.empty:
-                            # Filter to only the gap period
-                            df = df[(df.index >= gap_start) & (df.index <= gap_end)]
+                        df = self.get_historical_data(ticker, gap_start.strftime('%Y-%m-%d'), gap_end.strftime('%Y-%m-%d'), timespan='hour', multiplier=1)
                     else:
-                        # For minute gaps, fetch minute data for the specific range
-                        df = self.fetch_ticker_minute_data(ticker, gap_start, gap_end)
+                        df = self.get_historical_data(ticker, gap_start.strftime('%Y-%m-%d'), gap_end.strftime('%Y-%m-%d'), timespan='minute', multiplier=1)
                     
                     if not df.empty:
                         rows_inserted = self.save_stock_data_to_db(ticker, df, is_hourly=is_hourly)
@@ -376,7 +344,7 @@ class DataFetcher:
                         retry_count += 1
                         if retry_count < max_retries:
                             logger.warning(f"✗ No data available, retrying... ({retry_count}/{max_retries})")
-                            time.sleep(3)  # Wait before retry
+                            time.sleep(3)
                         else:
                             logger.warning(f"✗ Could not fill gap after {max_retries} retries - adding to blacklist")
                     
@@ -386,11 +354,10 @@ class DataFetcher:
                     if retry_count < max_retries:
                         logger.info(f"Retrying... ({retry_count}/{max_retries})")
                         time.sleep(3)
-            
-            # If gap wasn't filled after all retries, add to blacklist
+
             if not gap_filled:
                 try:
-                    self.add_to_blacklist(ticker, gap_start)
+                    self.add_to_blacklist(ticker, gap_start, is_hourly=is_hourly)
                     blacklisted_gaps.append({
                         "start": gap_start.isoformat(),
                         "end": gap_end.isoformat(),
@@ -405,8 +372,7 @@ class DataFetcher:
                         "is_hourly": is_hourly,
                         "error": f"Failed after {max_retries} retries (blacklist failed: {str(e)})"
                     })
-            
-            # Delay between gap fills to avoid rate limiting
+
             if not gap_filled:
                 time.sleep(2)
         

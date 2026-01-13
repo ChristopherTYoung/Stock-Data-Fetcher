@@ -33,8 +33,8 @@ create table if not exists incrementum.stock_history (
     high integer not null,
     low integer not null,
     volume integer not null,
-    is_hourly boolean default true,
-    primary key (stock_symbol, day_and_time)
+    is_hourly boolean not null default true,
+    primary key (stock_symbol, day_and_time, is_hourly)
 );
 
 create table if not exists incrementum.watchlist_stock (
@@ -92,5 +92,6 @@ create table if not exists incrementum.blacklist (
     timestamp timestamp not null,
     time_added timestamp not null,
     foreign key (stock_symbol) references incrementum.stock(symbol) on delete cascade,
-    unique (stock_symbol, timestamp)
+    unique (stock_symbol, timestamp),
+    is_hourly boolean default true
 );

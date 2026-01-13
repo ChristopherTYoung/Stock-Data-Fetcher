@@ -18,20 +18,20 @@ cd ../k8s
 kubectl apply -f *.yaml
 
 echo "Restarting data-fetcher pods..."
-kubectl rollout restart deployment data-fetcher -n stock-data-fetcher
+kubectl rollout restart deployment data-fetcher -n stock-data-fetchers
 
 echo "Restarting orchestrator pods..."
-kubectl rollout restart deployment orchestrator -n stock-data-fetcher
+kubectl rollout restart deployment orchestrator -n stock-data-fetchers
 
 echo "Waiting for rollouts to complete..."
-kubectl rollout status deployment data-fetcher -n stock-data-fetcher
-kubectl rollout status deployment orchestrator -n stock-data-fetcher
+kubectl rollout status deployment data-fetcher -n stock-data-fetchers
+kubectl rollout status deployment orchestrator -n stock-data-fetchers
 
 echo "Done!"
 echo ""
 echo "Service status:"
-kubectl get pods -n stock-data-fetcher
+kubectl get pods -n stock-data-fetchers
 echo ""
 echo "To access locally:"
-echo "  kubectl port-forward -n stock-data-fetcher svc/data-fetcher-service 8000:8000"
-echo "  kubectl port-forward -n stock-data-fetcher svc/orchestrator-service 8080:8080"
+echo "  kubectl port-forward -n stock-data-fetchers svc/data-fetcher-service 8000:8000"
+echo "  kubectl port-forward -n stock-data-fetchers svc/orchestrator-service 8080:8080"

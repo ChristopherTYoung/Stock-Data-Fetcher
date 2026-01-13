@@ -37,12 +37,12 @@ class StockHistory(Base):
     
     stock_symbol = Column("stock_symbol", String(20), primary_key=True, nullable=False)
     day_and_time = Column("day_and_time", DateTime, primary_key=True, nullable=False)
+    is_hourly = Column("is_hourly", Boolean, primary_key=True, nullable=False, server_default='true')
     open_price = Column("open_price", Integer, nullable=False)
     close_price = Column("close_price", Integer, nullable=False)
     high = Column("high", Integer, nullable=False)
     low = Column("low", Integer, nullable=False)
     volume = Column("volume", Integer, nullable=False)
-    is_hourly = Column("is_hourly", Boolean, nullable=False, server_default='true')
     
     def __repr__(self):
         return f"<StockHistory(symbol={self.stock_symbol}, time={self.day_and_time})>"
@@ -70,9 +70,10 @@ class Blacklist(Base):
     stock_symbol = Column("stock_symbol", String(10), nullable=False)
     timestamp = Column("timestamp", DateTime, nullable=False)
     time_added = Column("time_added", DateTime, nullable=False)
+    is_hourly = Column("is_hourly", Boolean, default=True)
     
     def __repr__(self):
-        return f"<Blacklist(symbol={self.stock_symbol}, timestamp={self.timestamp}, added={self.time_added})>"
+        return f"<Blacklist(symbol={self.stock_symbol}, timestamp={self.timestamp}, added={self.time_added}, is_hourly={self.is_hourly})>"
 
 
 def init_db():

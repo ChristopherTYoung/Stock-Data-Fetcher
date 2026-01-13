@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: data-fetcher-service
-  namespace: stock-data-fetcher
+  namespace: stock-data-fetchers
   labels:
     app: data-fetcher
 spec:

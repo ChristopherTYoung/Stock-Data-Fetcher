@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: postgres-init-script
-  namespace: stock-data-fetcher
+  namespace: stock-data-fetchers
 data:
   init.sql: |
     create schema if not exists incrementum;
@@ -40,8 +40,8 @@ data:
         high integer not null,
         low integer not null,
         volume integer not null,
-        is_hourly boolean default true,
-        primary key (stock_symbol, day_and_time)
+        is_hourly boolean not null default true,
+        primary key (stock_symbol, day_and_time, is_hourly)
     );
 
     create table if not exists incrementum.watchlist_stock (
