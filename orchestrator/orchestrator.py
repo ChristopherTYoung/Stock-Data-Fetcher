@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Stock Orchestrator", version="1.0.0")
 
-# Initialize services
 polygon_service = PolygonService()
 queue_service = StockQueueService(stocks_per_request=1000, refresh_interval_hours=24)
 scheduler = AsyncIOScheduler()

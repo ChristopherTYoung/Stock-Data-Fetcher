@@ -15,7 +15,6 @@ app = FastAPI(title="Stock Data Fetcher", version="1.0.0")
 data_fetcher = DataFetcher()
 db_service = DatabaseService()
 
-# Initialize database on startup
 @app.on_event("startup")
 async def startup_event():
     logger.info("Initializing database...")
@@ -36,7 +35,7 @@ class StockDataRequest(BaseModel):
 
 async def reset_rate_limit_after_delay():
     """Reset rate limit flag after 1 hour."""
-    await asyncio.sleep(3600)  # Wait 1 hour
+    await asyncio.sleep(3600)
     data_fetcher.rate_limited = False
     data_fetcher.rate_limit_reset_time = None
     logger.info("Rate limit has been reset")
