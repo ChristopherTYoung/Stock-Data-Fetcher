@@ -99,5 +99,19 @@ data:
         timestamp timestamp not null,
         time_added timestamp not null,
         foreign key (stock_symbol) references incrementum.stock(symbol) on delete cascade,
-        unique (stock_symbol, timestamp)
+        unique (stock_symbol, timestamp, is_hourly),
+        is_hourly boolean default true
     );
+
+    -- Migration: Add is_hourly column if it doesn't exist
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'incrementum'
+            AND table_name = 'blacklist'
+            AND column_name = 'is_hourly'
+        ) THEN
+            ALTER TABLE incrementum.blacklist ADD COLUMN is_hourly boolean default true;
+        END IF;
+    END $$;
