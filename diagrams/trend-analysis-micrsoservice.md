@@ -4,6 +4,11 @@
 
 ```mermaid
 flowchart TB
+    subgraph TrainingData["Training Data Source"]
+        direction TB
+        TrainingDB[("Training Data Table<br/>---<br/>Historical OHLC Data<br/>for Model Training")]
+    end
+    
     subgraph Training["Training Phase"]
         direction TB
         HistData["Historical Price Data<br/>(open, close, high, low)"]
@@ -20,6 +25,8 @@ flowchart TB
         TrainData --> |"Hierarchical Labels:<br/>1. Bullish/Bearish<br/>2. Pattern Family<br/>3. Specific Trend"| Model
         Model --> TrainedModel
     end
+    
+    TrainingDB --> |"Load training data"| HistData
     
     subgraph Application["Application Phase"]
         direction TB
@@ -69,6 +76,7 @@ flowchart TB
     
     ContinuousAnalysis -.->|"Continuous Loop"| Application
     
+    style TrainingData fill:none,stroke:#fff
     style Training fill:none,stroke:#fff
     style Application fill:none,stroke:#fff
     style DataSource fill:none,stroke:#fff
