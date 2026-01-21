@@ -16,7 +16,7 @@ kubectl exec -n stock-data-fetchers $POD_NAME -- \
   env PGPASSWORD={{PGPASSWORD}} pg_dump -U stockuser -d stock_data -F c -f /tmp/db.dump
 
 echo "Copying backup to local machine..."
-kubectl cp stock-data-fetchers/$POD_NAME:/tmp/db.dump ./db.dump
+kubectl cp stock-data-fetchers/$POD_NAME:/tmp/db.dump /mnt/d/stock_data_backup/db.dump
 
 echo "Cleaning up..."
 kubectl exec -n stock-data-fetchers $POD_NAME -- rm /tmp/db.dump

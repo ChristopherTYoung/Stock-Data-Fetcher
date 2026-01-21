@@ -17,7 +17,7 @@ echo "Waiting for pod to be ready..."
 kubectl wait --for=condition=ready pod/$POD_NAME -n stock-data-fetchers --timeout=60s
 
 echo "Copying backup file to pod..."
-kubectl cp ./db.dump stock-data-fetchers/$POD_NAME:/tmp/db.dump
+kubectl cp /mnt/d/stock_data_backup/db.dump stock-data-fetchers/$POD_NAME:/tmp/db.dump
 
 echo "Restoring database..."
 kubectl exec -n stock-data-fetchers $POD_NAME -- \
