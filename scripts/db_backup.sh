@@ -11,14 +11,20 @@ echo "Found pod: $POD_NAME"
 echo "Waiting for pod to be ready..."
 kubectl wait --for=condition=ready pod/$POD_NAME -n stock-data-fetchers --timeout=60s
 
-echo "Creating backup..."
+echo "Creating backup and streaming to local machine..."
 kubectl exec -n stock-data-fetchers $POD_NAME -- \
-  env PGPASSWORD={{PGPASSWORD}} pg_dump -U stockuser -d stock_data -F c -f /tmp/db.dump
+  sh -c 'PGPASSWORD=${PGPASSWORD} pg_dump -U stockuser -d stock_data -F c' > ./db.dump
 
-echo "Copying backup to local machine..."
-kubectl cp stock-data-fetchers/$POD_NAME:/tmp/db.dump /mnt/d/stock_data_backup/db.dump
+echo "Mounting D: drive if not already mounted..."
+if [ ! -d "/mnt/d" ]; then
+  sudo mkdir -p /mnt/d
+fi
+if ! mountpoint -q /mnt/d; then
+  sudo mount -t drvfs D: /mnt/d
+fi
 
-echo "Cleaning up..."
-kubectl exec -n stock-data-fetchers $POD_NAME -- rm /tmp/db.dump
+echo "Copying backup to D: drive..."
+mkdir -p /mnt/d/stock_data_backup
+cp ./db.dump /mnt/d/stock_data_backup/db.dump
 
-echo "Backup completed successfully: ./db.dump"
+echo "Backup completed successfully: ./db.dump and /mnt/d/stock_data_backup/db.dump"
