@@ -16,7 +16,6 @@ class StockInfoResponse(BaseModel):
     updated_at: datetime
     latest_price: Optional[float] = None
     latest_timestamp: Optional[datetime] = None
-    total_records: int = 0
 
 
 class StockHistoryItem(BaseModel):
@@ -34,7 +33,6 @@ class StockHistoryResponse(BaseModel):
     start_date: datetime
     end_date: datetime
     timeframe: str
-    total_records: int
     data: List[StockHistoryItem]
 
 
