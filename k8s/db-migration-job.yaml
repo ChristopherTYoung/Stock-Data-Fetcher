@@ -1,0 +1,72 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migration
+  namespace: stock-data-fetchers
+spec:
+  template:
+    metadata:
+      labels:
+        app: db-migration
+    spec:
+      containers:
+      - name: migrate
+        image: postgres:15
+        command:
+        - /bin/bash
+        - -c
+        - |
+          echo "Starting database migration..."
+          echo "Connecting to: $PGHOST:$PGPORT/$PGDATABASE"
+          
+          # Wait for database to be ready
+          until pg_isready -h $PGHOST -p $PGPORT -U $PGUSER; do
+            echo "Waiting for database to be ready..."
+            sleep 2
+          done
+          
+          echo "Database is ready. Running migration script..."
+          psql -v ON_ERROR_STOP=1 < /scripts/init.sql
+          
+          if [ $? -eq 0 ]; then
+            echo "Migration completed successfully!"
+          else
+            echo "Migration failed!"
+            exit 1
+          fi
+        env:
+        - name: PGHOST
+          valueFrom:
+            configMapKeyRef:
+              name: db-config
+              key: DB_HOST
+        - name: PGPORT
+          valueFrom:
+            configMapKeyRef:
+              name: db-config
+              key: DB_PORT
+        - name: PGDATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: db-config
+              key: DB_NAME
+        - name: PGUSER
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: POSTGRES_USER
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: POSTGRES_PASSWORD
+        volumeMounts:
+        - name: sql-script
+          mountPath: /scripts
+          readOnly: true
+      volumes:
+      - name: sql-script
+        configMap:
+          name: postgres-init-script
+      restartPolicy: Never
+  backoffLimit: 3

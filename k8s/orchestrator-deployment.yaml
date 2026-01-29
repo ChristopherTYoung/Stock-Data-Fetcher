@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: orchestrator
-  namespace: stock-data-fetcher
+  namespace: stock-data-fetchers
   labels:
     app: orchestrator
 spec:
@@ -29,6 +29,11 @@ spec:
               name: finnhub-secret
               key: FINNHUB_TOKEN
               optional: true
+        - name: POLYGON_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: finnhub-secret
+              key: POLYGON_API_KEY
         livenessProbe:
           httpGet:
             path: /health

@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: data-fetcher
-  namespace: stock-data-fetcher
+  namespace: stock-data-fetchers
   labels:
     app: data-fetcher
 spec:
@@ -41,6 +41,11 @@ spec:
             secretKeyRef:
               name: postgres-secret
               key: DATABASE_URL
+        - name: POLYGON_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: finnhub-secret
+              key: POLYGON_API_KEY
         - name: ORCHESTRATOR_URL
           value: "http://orchestrator-service:8080"
         - name: WORKER_ID

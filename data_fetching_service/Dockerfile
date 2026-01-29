@@ -11,6 +11,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY main.py .
 COPY database.py .
+COPY gap_detector.py .
+COPY data_fetcher.py .
 COPY worker_scheduler.py .
 
 # Expose port

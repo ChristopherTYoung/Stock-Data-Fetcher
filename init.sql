@@ -33,8 +33,8 @@ create table if not exists incrementum.stock_history (
     high integer not null,
     low integer not null,
     volume integer not null,
-    is_hourly boolean default true,
-    primary key (stock_symbol, day_and_time)
+    is_hourly boolean not null default true,
+    primary key (stock_symbol, day_and_time, is_hourly)
 );
 
 create table if not exists incrementum.watchlist_stock (
@@ -85,3 +85,13 @@ alter table incrementum.custom_collection_stock
 
 alter table incrementum.custom_collection_stock
     add constraint custom_collection_stock_collection_id_stock_symbol_key unique (collection_id, stock_symbol);
+
+create table if not exists incrementum.blacklist (
+    id int primary key generated always as identity,
+    stock_symbol varchar(10) not null,
+    timestamp timestamp not null,
+    time_added timestamp not null,
+    foreign key (stock_symbol) references incrementum.stock(symbol) on delete cascade,
+    unique (stock_symbol, timestamp),
+    is_hourly boolean default true
+);

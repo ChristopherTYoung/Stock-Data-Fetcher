@@ -1,0 +1,136 @@
+### Variables
+@baseUrl = https://data.incrementum.duckdns.org
+@ticker = AAPL
+
+### Health Check
+GET {{baseUrl}}/health
+
+### Root Info
+GET {{baseUrl}}/
+
+### Check Rate Limit Status
+GET {{baseUrl}}/rate-limit-status
+
+###############################################
+# Gap Detection and Filling Tests
+###############################################
+
+### 1. Check for gaps in AAPL
+GET {{baseUrl}}/check-gaps/{{ticker}}
+
+### 2. Fill gaps for AAPL
+POST {{baseUrl}}/fill-gaps/{{ticker}}?max_retries=2
+
+### 2b. Fill gaps for AAPL with custom retry count (faster)
+POST {{baseUrl}}/fill-gaps/{{ticker}}?max_retries=1
+
+### 3. Re-check gaps after filling (verify they were filled)
+GET {{baseUrl}}/check-gaps/{{ticker}}
+
+###############################################
+# Blacklist Management Tests
+###############################################
+
+### Get all blacklist entries
+GET {{baseUrl}}/blacklist
+
+### Get blacklist entries for specific ticker
+GET {{baseUrl}}/blacklist?ticker={{ticker}}
+
+### Get blacklist entries for GOOGL
+GET {{baseUrl}}/blacklist?ticker=GOOGL
+
+### Clear blacklist for specific ticker
+DELETE {{baseUrl}}/blacklist?ticker={{ticker}}
+
+### Clear entire blacklist
+DELETE {{baseUrl}}/blacklist
+
+###############################################
+# Test with other tickers
+###############################################
+
+### Check gaps for GOOGL
+GET {{baseUrl}}/check-gaps/GOOGL
+
+### Fill gaps for GOOGL
+POST {{baseUrl}}/fill-gaps/GOOGL
+
+### Check gaps for MSFT
+GET {{baseUrl}}/check-gaps/MSFT
+
+### Fill gaps for MSFT
+POST {{baseUrl}}/fill-gaps/MSFT
+
+###############################################
+# Fetch Initial Data (if needed)
+###############################################
+
+### Fetch initial data for single ticker
+POST {{baseUrl}}/fetch-stock-data
+Content-Type: application/json
+
+{
+  "tickers": ["AAPL"]
+}
+
+### Fetch initial data for multiple tickers
+POST {{baseUrl}}/fetch-stock-data
+Content-Type: application/json
+
+{
+  "tickers": ["AAPL", "GOOGL", "MSFT"]
+}
+
+###############################################
+# Complete Test Workflow
+###############################################
+
+### Step 1: Fetch initial data for TSLA
+POST {{baseUrl}}/fetch-stock-data
+Content-Type: application/json
+
+{
+  "tickers": ["TSLA"]
+}
+
+### Step 2: Check for gaps in TSLA
+GET {{baseUrl}}/check-gaps/TSLA
+
+### Step 3: Fill any gaps found in TSLA
+POST {{baseUrl}}/fill-gaps/TSLA
+
+### Step 4: Verify gaps were filled in TSLA
+GET {{baseUrl}}/check-gaps/TSLA
+
+###############################################
+# Blacklist Testing Workflow
+###############################################
+
+### Test 1: Check blacklist (should be empty initially)
+GET {{baseUrl}}/blacklist
+
+### Test 2: Try to fill gaps for a ticker (some may fail and get blacklisted)
+POST {{baseUrl}}/fill-gaps/AAPL
+
+### Test 3: Check blacklist again (should show any failed gaps)
+GET {{baseUrl}}/blacklist
+
+### Test 4: Get blacklist for specific ticker
+GET {{baseUrl}}/blacklist?ticker=AAPL
+
+### Test 5: Try to check gaps again (blacklisted gaps should be filtered out)
+GET {{baseUrl}}/check-gaps/AAPL
+
+### Test 6: Clear blacklist for AAPL
+DELETE {{baseUrl}}/blacklist?ticker=AAPL
+
+### Test 7: Verify blacklist was cleared for AAPL
+GET {{baseUrl}}/blacklist?ticker=AAPL
+
+### Test 8: Clear entire blacklist
+DELETE {{baseUrl}}/blacklist
+
+### Test 9: Verify entire blacklist is empty
+GET {{baseUrl}}/blacklist
+

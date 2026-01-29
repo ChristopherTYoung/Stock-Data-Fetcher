@@ -2,19 +2,17 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: data-fetcher-ingress
-  namespace: stock-data-fetcher
+  namespace: stock-data-fetchers
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
 spec:
   ingressClassName: nginx
-  tls:
-  - hosts:
-    - data.incremy.duckdns.org
-    secretName: data-fetcher-tls
   rules:
-  - host: data.incremy.duckdns.org
+  - host: data.incrementum.duckdns.org  # Change this to your domain or use LoadBalancer
     http:
       paths:
       - path: /

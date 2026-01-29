@@ -3,3 +3,4 @@
 .venv
 *secret.yaml
 __pycache__
+db.dump

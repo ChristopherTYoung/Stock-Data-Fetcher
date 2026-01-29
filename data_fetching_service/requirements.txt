@@ -6,3 +6,4 @@ pydantic==2.5.0
 sqlalchemy==2.0.23
 psycopg2-binary==2.9.9
 httpx==0.25.2
+polygon-api-client
