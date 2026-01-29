@@ -1,12 +1,22 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
-from typing import List
+from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import logging
 import asyncio
 from database import init_db
 from data_fetcher import DataFetcher
 from database_service import DatabaseService
+import yfinance as yf
+from database import get_db, StockHistory, Stock, init_db
+from stock_service import (
+    get_stock_info, 
+    get_stock_history, 
+    get_available_stocks, 
+    get_stock_date_range,
+    StockInfoResponse,
+    StockHistoryResponse
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -88,6 +98,102 @@ async def get_blacklist(ticker: str = None):
     except Exception as e:
         logger.error(f"Error getting blacklist: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error getting blacklist: {str(e)}")
+
+@app.get("/stocks")
+async def list_stocks():
+    """Get a list of all available stocks in the database."""
+    try:
+        stocks = get_available_stocks()
+        return {
+            "total_stocks": len(stocks),
+            "stocks": stocks
+        }
+    except Exception as e:
+        logger.error(f"Error in list_stocks: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@app.get("/stock/{symbol}", response_model=StockInfoResponse)
+async def get_stock(symbol: str):
+    """Get comprehensive information about a specific stock."""
+    try:
+        stock_info = get_stock_info(symbol)
+        if not stock_info:
+            raise HTTPException(status_code=404, detail=f"Stock {symbol.upper()} not found")
+        return stock_info
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_stock for {symbol}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@app.get("/stock/{symbol}/history", response_model=StockHistoryResponse)
+async def get_stock_history_endpoint(
+    symbol: str,
+    start_date: Optional[str] = Query(None, description="Start date in YYYY-MM-DD format"),
+    end_date: Optional[str] = Query(None, description="End date in YYYY-MM-DD format"),
+    ishourly: Optional[bool] = Query(None, description="True for hourly data, False for minute data, None for both"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum number of records to return"),
+    offset: int = Query(0, ge=0, description="Number of records to skip for pagination")
+):
+    """Get stock price history for a given symbol and date range."""
+    try:
+        # Parse date strings if provided
+        parsed_start_date = None
+        parsed_end_date = None
+        
+        if start_date:
+            try:
+                parsed_start_date = datetime.strptime(start_date, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid start_date format. Use YYYY-MM-DD")
+                
+        if end_date:
+            try:
+                parsed_end_date = datetime.strptime(end_date, "%Y-%m-%d")
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD")
+                
+        # Validate date range
+        if parsed_start_date and parsed_end_date and parsed_start_date >= parsed_end_date:
+            raise HTTPException(status_code=400, detail="start_date must be before end_date")
+        
+        history = get_stock_history(
+            symbol=symbol,
+            start_date=parsed_start_date,
+            end_date=parsed_end_date,
+            ishourly=ishourly,
+            limit=limit,
+            offset=offset
+        )
+        
+        if not history:
+            raise HTTPException(status_code=404, detail=f"Stock {symbol.upper()} not found")
+            
+        return history
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_stock_history for {symbol}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@app.get("/stock/{symbol}/date-range")
+async def get_stock_date_range_endpoint(symbol: str):
+    """Get the available date range for a specific stock."""
+    try:
+        date_range = get_stock_date_range(symbol)
+        if not date_range:
+            raise HTTPException(status_code=404, detail=f"No data found for stock {symbol.upper()}")
+        return date_range
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_stock_date_range for {symbol}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
 
 if __name__ == "__main__":
     import uvicorn
