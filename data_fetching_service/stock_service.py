@@ -56,10 +56,6 @@ def get_stock_info(symbol: str) -> Optional[StockInfoResponse]:
             .limit(1)
         ).first()
         
-        total_records = db.execute(
-            select(StockHistory)
-            .where(StockHistory.stock_symbol == symbol.upper())
-        ).rowcount or 0
         
         latest_price = None
         latest_timestamp = None
@@ -75,9 +71,7 @@ def get_stock_info(symbol: str) -> Optional[StockInfoResponse]:
             updated_at=stock.updated_at,
             latest_price=latest_price,
             latest_timestamp=latest_timestamp,
-            total_records=total_records
         )
-
 
 def get_stock_history(
     symbol: str,
@@ -120,10 +114,7 @@ def get_stock_history(
             .limit(limit)
         ).fetchall()
         
-        total_count = db.execute(
-            select(StockHistory)
-            .where(and_(*conditions))
-        ).rowcount or 0
+        
         
         history_data = []
         for result in history_results:
@@ -143,7 +134,6 @@ def get_stock_history(
             start_date=start_date,
             end_date=end_date,
             timeframe=str(ishourly) if ishourly is not None else "both",
-            total_records=total_count,
             data=history_data
         )
 
@@ -158,16 +148,12 @@ def get_available_stocks() -> List[Dict[str, Any]]:
         for result in stocks_result:
             stock = result[0]
             
-            record_count = db.execute(
-                select(StockHistory)
-                .where(StockHistory.stock_symbol == stock.symbol)
-            ).rowcount or 0
+            
             
             stocks_list.append({
                 "symbol": stock.symbol,
                 "company_name": stock.company_name,
                 "updated_at": stock.updated_at,
-                "total_records": record_count
             })
             
         return stocks_list
