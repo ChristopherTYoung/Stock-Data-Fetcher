@@ -17,6 +17,7 @@ from stock_service import (
     StockInfoResponse,
     StockHistoryResponse
 )
+from polygon_stock_service import fetch_and_update_symbols
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -31,6 +32,14 @@ async def startup_event():
     init_db()
     logger.info("Database initialized")
     logger.info("Using yfinance for hourly (2 years) and minute (1 month) data")
+    try:
+        logger.info("Starting Polygon metadata sync...")
+        loop = asyncio.get_running_loop()
+        saved = await loop.run_in_executor(None, fetch_and_update_symbols)
+        logger.info(f"Polygon sync complete. Saved {saved} stocks.")
+    except Exception as e:
+        logger.error(f"Error running Polygon sync: {e}")
+
 
 
 @app.on_event("shutdown")

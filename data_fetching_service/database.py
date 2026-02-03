@@ -1,7 +1,7 @@
 """
 Database models and connection setup for stock data storage.
 """
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, BigInteger, Boolean
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, BigInteger, Boolean, Text, Numeric
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
@@ -60,6 +60,22 @@ class Stock(Base):
     symbol = Column("symbol", String(10), primary_key=True)
     company_name = Column("company_name", String(100), nullable=False)
     updated_at = Column("updated_at", DateTime, nullable=False)
+    description = Column("description", Text, nullable=True)
+    market_cap = Column("market_cap", BigInteger, nullable=True)
+    primary_exchange = Column("primary_exchange", String(100), nullable=True)
+    type = Column("type", String(50), nullable=True)
+    currency_name = Column("currency_name", String(50), nullable=True)
+    cik = Column("cik", String(50), nullable=True)
+    composite_figi = Column("composite_figi", String(50), nullable=True)
+    share_class_figi = Column("share_class_figi", String(50), nullable=True)
+    outstanding_shares = Column("outstanding_shares", BigInteger, nullable=True)
+    eps = Column("eps", Numeric(20, 6), nullable=True)
+    homepage_url = Column("homepage_url", String(255), nullable=True)
+    total_employees = Column("total_employees", Integer, nullable=True)
+    list_date = Column("list_date", DateTime, nullable=True)
+    locale = Column("locale", String(20), nullable=True)
+    sic_code = Column("sic_code", String(20), nullable=True)
+    sic_description = Column("sic_description", String(255), nullable=True)
     
     def __repr__(self):
         return f"<Stock(symbol={self.symbol}, company={self.company_name})>"
