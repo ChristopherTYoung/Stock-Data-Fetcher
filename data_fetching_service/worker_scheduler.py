@@ -6,9 +6,12 @@ import httpx
 import logging
 from datetime import datetime
 import os
+import signal
+import sys
 
-# Import the DataFetcher class
+# Import the DataFetcher class and database cleanup
 from data_fetcher import DataFetcher
+from database import close_db_connections
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -172,5 +175,24 @@ async def hourly_fetch_task():
         await asyncio.sleep(FETCH_INTERVAL_SECONDS)
 
 
+def signal_handler(signum, frame):
+    """Handle shutdown signals gracefully."""
+    logger.info(f"Received signal {signum}. Shutting down gracefully...")
+    close_db_connections()
+    sys.exit(0)
+
+
 if __name__ == "__main__":
-    asyncio.run(hourly_fetch_task())
+    # Set up signal handlers for graceful shutdown
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    try:
+        asyncio.run(hourly_fetch_task())
+    except KeyboardInterrupt:
+        logger.info("KeyboardInterrupt received. Shutting down...")
+        close_db_connections()
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        close_db_connections()
+        raise

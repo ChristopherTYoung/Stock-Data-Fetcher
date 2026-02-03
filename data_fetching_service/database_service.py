@@ -48,8 +48,9 @@ class DatabaseService:
         
         rows_inserted = 0
         
-        with get_db() as db:
-            self.ensure_stock_exists(ticker, db)
+        try:
+            with get_db() as db:
+                self.ensure_stock_exists(ticker, db)
             
             for timestamp, row in df.iterrows():
                 try:
@@ -93,12 +94,10 @@ class DatabaseService:
             else:
                 logger.warning(f"No new rows to save for {ticker} (is_hourly={is_hourly}) - all records already exist")
         
-        return rows_inserted
-    
-    def add_to_blacklist(self, ticker: str, gap_start: datetime, is_hourly: bool = True) -> None:
-        """Add a gap to the blacklist."""
-        with get_db() as db:
-            blacklist_entry = Blacklist(
+        except Exception as e:
+            logger.error(f"Database error while saving data for {ticker}: {str(e)}")
+            raise
+        
                 stock_symbol=ticker,
                 timestamp=gap_start,
                 time_added=datetime.now(),
