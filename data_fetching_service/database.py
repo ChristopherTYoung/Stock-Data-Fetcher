@@ -16,10 +16,14 @@ DATABASE_URL = os.getenv(
     "postgresql://user:password@localhost:5432/stock_data"
 )
 
-# Create engine with schema search path
+# Create engine with schema search path and connection pooling
 engine = create_engine(
     DATABASE_URL, 
     pool_pre_ping=True,
+    pool_size=5,  # Maximum number of permanent connections to maintain
+    max_overflow=10,  # Maximum number of connections that can be created on demand
+    pool_timeout=30,  # Number of seconds to wait before giving up on a connection
+    pool_recycle=3600,  # Number of seconds to wait before discarding and replacing a connection
     connect_args={"options": "-csearch_path=incrementum,public"}
 )
 
@@ -120,3 +124,12 @@ def get_db():
 def get_db_session():
     """Get a new database session."""
     return SessionLocal()
+
+
+def close_db_connections():
+    """Close all database connections and dispose of the engine."""
+    try:
+        engine.dispose()
+        logger.info("Database connections closed successfully")
+    except Exception as e:
+        logger.error(f"Error closing database connections: {e}")

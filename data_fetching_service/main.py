@@ -8,7 +8,7 @@ from database import init_db
 from data_fetcher import DataFetcher
 from database_service import DatabaseService
 import yfinance as yf
-from database import get_db, StockHistory, Stock, init_db
+from database import get_db, StockHistory, Stock, init_db, close_db_connections, engine
 from stock_service import (
     get_stock_info, 
     get_stock_history, 
@@ -40,6 +40,13 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Error running Polygon sync: {e}")
 
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("Shutting down application...")
+    close_db_connections()
+    logger.info("Application shutdown complete")
 
 class StockDataRequest(BaseModel):
     tickers: List[str]
@@ -74,6 +81,25 @@ async def root():
 async def health():
     """Health check endpoint for probes."""
     return {"status": "ok"}
+
+
+@app.get("/db-status")
+async def database_status():
+    """Get database connection pool status."""
+    try:
+        pool = engine.pool
+        return {
+            "pool_size": pool.size(),
+            "checked_in": pool.checkedin(),
+            "checked_out": pool.checkedout(),
+            "overflow": pool.overflow(),
+            "invalid": pool.invalid(),
+            "pool_timeout": engine.pool._timeout,
+            "pool_recycle": engine.pool._recycle
+        }
+    except Exception as e:
+        logger.error(f"Error getting database status: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database status error: {str(e)}")
 
 @app.get("/rate-limit-status")
 async def rate_limit_status():
