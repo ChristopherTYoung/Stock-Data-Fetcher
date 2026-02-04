@@ -100,3 +100,22 @@ data:
     DROP TABLE IF EXISTS incrementum.watchlist_custom_screener CASCADE;
     DROP TABLE IF EXISTS incrementum.watchlist_screener CASCADE;
     DROP TABLE IF EXISTS incrementum.watchlist CASCADE;
+
+    -- Migration: Add columns to stock table
+
+    ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS description TEXT;
+    ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS market_cap BIGINT;
+    ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS primary_exchange VARCHAR(100);
+    ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS type VARCHAR(50);
+    ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS currency_name VARCHAR(50);
+    ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS cik VARCHAR(50);
+    ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS composite_figi VARCHAR(50);
+    ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS share_class_figi VARCHAR(50);
+    ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS outstanding_shares BIGINT;
+    ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS eps NUMERIC(20,6);
+    ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS homepage_url VARCHAR(255);
+    ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS total_employees INTEGER;
+    ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS list_date DATE;
+    ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS locale VARCHAR(20);
+    ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS sic_code VARCHAR(20);
+    ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS sic_description VARCHAR(255);
