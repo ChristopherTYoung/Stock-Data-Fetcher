@@ -1,0 +1,64 @@
+name: Docker Hub build and k8s deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-push-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: christophertyoung
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push stock-data-fetcher
+        uses: docker/build-push-action@v5
+        with:
+          context: ./data_fetching_service
+          push: true
+          tags: christophertyoung/stock-data-fetcher:latest
+
+      - name: Build and push stock-orchestrator
+        uses: docker/build-push-action@v5
+        with:
+          context: ./orchestrator
+          push: true
+          tags: christophertyoung/stock-orchestrator:latest
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.30.0
+
+      - name: Configure kubeconfig
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > "$HOME/.kube/config" || echo "${{ secrets.KUBE_CONFIG }}" > "$HOME/.kube/config"
+
+      - name: Apply manifests
+        run: kubectl apply -f k8s/*.yaml
+
+      - name: Restart deployments
+        run: |
+          kubectl rollout restart deployment data-fetcher -n stock-data-fetchers
+          kubectl rollout restart deployment orchestrator -n stock-data-fetchers
+
+      - name: Wait for rollouts
+        run: |
+          kubectl rollout status deployment data-fetcher -n stock-data-fetchers
+          kubectl rollout status deployment orchestrator -n stock-data-fetchers
+
+      - name: Show pod status
+        run: kubectl get pods -n stock-data-fetchers
