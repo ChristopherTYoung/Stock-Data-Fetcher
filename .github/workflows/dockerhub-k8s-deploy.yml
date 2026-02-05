@@ -41,14 +41,8 @@ jobs:
         with:
           version: v1.30.0
 
-      - name: Configure kubeconfig
-        shell: bash
-        run: |
-          mkdir -p "$HOME/.kube"
-          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > "$HOME/.kube/config" || echo "${{ secrets.KUBE_CONFIG }}" > "$HOME/.kube/config"
-
       - name: Apply manifests
-        run: kubectl apply -f k8s/*.yaml
+        run: kubectl apply -f k8s/*
 
       - name: Restart deployments
         run: |
