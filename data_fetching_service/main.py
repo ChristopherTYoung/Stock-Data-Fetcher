@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import logging
 import asyncio
+import os
 from database import init_db
 from data_fetcher import DataFetcher
 from database_service import DatabaseService
@@ -29,10 +30,14 @@ db_service = DatabaseService()
 async def run_polygon_sync_background():
     """Run Polygon metadata sync in background without blocking startup."""
     try:
-        logger.info("Starting background Polygon metadata sync...")
+        # Get worker information from environment
+        worker_id = os.getenv("WORKER_ID", "worker-1")
+        total_workers = int(os.getenv("TOTAL_WORKERS", "5"))
+        
+        logger.info(f"Starting background Polygon metadata sync (Worker: {worker_id}, Total: {total_workers})...")
         loop = asyncio.get_running_loop()
-        saved = await loop.run_in_executor(None, fetch_and_update_symbols)
-        logger.info(f"Polygon sync complete. Saved {saved} stocks.")
+        saved = await loop.run_in_executor(None, fetch_and_update_symbols, worker_id, total_workers)
+        logger.info(f"Polygon sync complete. Worker {worker_id} saved {saved} stocks.")
     except Exception as e:
         logger.error(f"Error running Polygon sync: {e}")
 
