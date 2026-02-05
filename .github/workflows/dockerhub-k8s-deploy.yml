@@ -42,7 +42,7 @@ jobs:
           version: v1.30.0
 
       - name: Apply manifests
-        run: kubectl apply -f k8s/*
+        run: kubectl apply -f k8s/
 
       - name: Restart deployments
         run: |
