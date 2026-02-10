@@ -51,60 +51,74 @@ class DatabaseService:
         try:
             with get_db() as db:
                 self.ensure_stock_exists(ticker, db)
-            
-            for timestamp, row in df.iterrows():
-                try:
-                    existing = db.execute(
-                        select(StockHistory).where(
-                            StockHistory.stock_symbol == ticker,
-                            StockHistory.day_and_time == timestamp,
-                            StockHistory.is_hourly == is_hourly
+                
+                for timestamp, row in df.iterrows():
+                    try:
+                        existing = db.execute(
+                            select(StockHistory).where(
+                                StockHistory.stock_symbol == ticker,
+                                StockHistory.day_and_time == timestamp,
+                                StockHistory.is_hourly == is_hourly
+                            )
+                        ).first()
+                        
+                        if existing:
+                            logger.debug(f"Skipping duplicate record for {ticker} at {timestamp}")
+                            continue
+                        
+                        open_col = 'Open' if 'Open' in row else 'open'
+                        close_col = 'Close' if 'Close' in row else 'close'
+                        high_col = 'High' if 'High' in row else 'high'
+                        low_col = 'Low' if 'Low' in row else 'low'
+                        volume_col = 'Volume' if 'Volume' in row else 'volume'
+                        
+                        stock_record = StockHistory(
+                            stock_symbol=ticker,
+                            day_and_time=timestamp,
+                            open_price=int(row[open_col] * 100),
+                            close_price=int(row[close_col] * 100),
+                            high=int(row[high_col] * 100),
+                            low=int(row[low_col] * 100),
+                            volume=int(row[volume_col]),
+                            is_hourly=is_hourly
                         )
-                    ).first()
-                    
-                    if existing:
-                        logger.debug(f"Skipping duplicate record for {ticker} at {timestamp}")
+                        db.add(stock_record)
+                        rows_inserted += 1
+                    except Exception as e:
+                        logger.error(f"Error inserting row for {ticker} at {timestamp}: {str(e)}")
                         continue
-                    
-                    open_col = 'Open' if 'Open' in row else 'open'
-                    close_col = 'Close' if 'Close' in row else 'close'
-                    high_col = 'High' if 'High' in row else 'high'
-                    low_col = 'Low' if 'Low' in row else 'low'
-                    volume_col = 'Volume' if 'Volume' in row else 'volume'
-                    
-                    stock_record = StockHistory(
-                        stock_symbol=ticker,
-                        day_and_time=timestamp,
-                        open_price=int(row[open_col] * 100),
-                        close_price=int(row[close_col] * 100),
-                        high=int(row[high_col] * 100),
-                        low=int(row[low_col] * 100),
-                        volume=int(row[volume_col]),
-                        is_hourly=is_hourly
-                    )
-                    db.add(stock_record)
-                    rows_inserted += 1
-                except Exception as e:
-                    logger.error(f"Error inserting row for {ticker} at {timestamp}: {str(e)}")
-                    continue
 
-            if rows_inserted > 0:
-                db.commit()
-                logger.info(f"✓ SAVED {rows_inserted} rows for {ticker} (is_hourly={is_hourly})")
-            else:
-                logger.warning(f"No new rows to save for {ticker} (is_hourly={is_hourly}) - all records already exist")
+                if rows_inserted > 0:
+                    db.commit()
+                    logger.info(f"✓ SAVED {rows_inserted} rows for {ticker} (is_hourly={is_hourly})")
+                else:
+                    logger.warning(f"No new rows to save for {ticker} (is_hourly={is_hourly}) - all records already exist")
+            
+            return rows_inserted
         
         except Exception as e:
             logger.error(f"Database error while saving data for {ticker}: {str(e)}")
             raise
-        
-        return rows_inserted
-    
-    def add_gap_to_blacklist(self, ticker: str, gap_start: datetime, is_hourly: bool = False) -> None:
-        """Add a gap to the blacklist."""
+
+    def add_to_blacklist(self, ticker: str, gap_start: datetime, is_hourly: bool = False) -> None:
+        """Add a gap start timestamp to the blacklist."""
         with get_db() as db:
+            self.ensure_stock_exists(ticker, db)
+            
+            existing = db.execute(
+                select(Blacklist).where(
+                    Blacklist.stock_symbol == ticker.upper(),
+                    Blacklist.timestamp == gap_start,
+                    Blacklist.is_hourly == is_hourly
+                )
+            ).first()
+            
+            if existing:
+                logger.info(f"Blacklist entry already exists for {ticker} at {gap_start} (hourly={is_hourly})")
+                return
+            
             blacklist_entry = Blacklist(
-                stock_symbol=ticker,
+                stock_symbol=ticker.upper(),
                 timestamp=gap_start,
                 time_added=datetime.now(),
                 is_hourly=is_hourly

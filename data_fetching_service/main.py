@@ -32,19 +32,26 @@ async def update_stock_history(ticker: str, is_hourly: bool = False):
     update_stock_data(ticker, is_hourly=is_hourly)
     return {"message": f"Updated {ticker} data ({'hourly' if is_hourly else 'minute-level'})"}
 
+async def run_polygon_sync_background():
+    """Run Polygon metadata sync in background without blocking startup."""
+    try:
+        logger.info("Starting background Polygon metadata sync...")
+        loop = asyncio.get_running_loop()
+        saved = await loop.run_in_executor(None, fetch_and_update_symbols)
+        logger.info(f"Polygon sync complete. Saved {saved} stocks.")
+    except Exception as e:
+        logger.error(f"Error running Polygon sync: {e}")
+
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("Initializing database...")
     init_db()
     logger.info("Database initialized")
     logger.info("Using yfinance for hourly (2 years) and minute (1 month) data")
-    try:
-        logger.info("Starting Polygon metadata sync...")
-        loop = asyncio.get_running_loop()
-        saved = await loop.run_in_executor(None, fetch_and_update_symbols)
-        logger.info(f"Polygon sync complete. Saved {saved} stocks.")
-    except Exception as e:
-        logger.error(f"Error running Polygon sync: {e}")
+    logger.info("Service ready - Polygon metadata sync running in background...")
+    
+    asyncio.create_task(run_polygon_sync_background())
 
 
 

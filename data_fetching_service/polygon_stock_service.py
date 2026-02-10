@@ -60,26 +60,14 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
     saved_count = 0
     error_count = 0
 
-    with get_db() as db:
-        # Clear existing stocks
-        try:
-            deleted = db.execute(Stock.__table__.delete())
-            db.commit()
-            print(f"Cleared {deleted.rowcount} existing stocks from database")
-        except Exception as e:
-            print(f"Warning: could not clear existing stocks: {e}")
-            db.rollback()
-
     for idx, entry in enumerate(stock_data):
         ticker = entry.get('symbol')
         if not ticker:
             continue
 
         try:
-            # Fetch detailed metadata from Polygon
             details = client.get_ticker_details(ticker)
 
-            # Parse list_date
             list_date = None
             if hasattr(details, 'list_date') and details.list_date:
                 try:
@@ -87,7 +75,6 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                 except (ValueError, TypeError):
                     list_date = None
 
-            # Fetch annual VX financials and extract basic EPS for last fiscal year
             eps_value = None
             try:
                 last_year = datetime.now().year - 1
@@ -148,13 +135,15 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
             except Exception:
                 eps_value = None
 
-            # Build defaults - only keep keys that exist on the model
+            company_name = getattr(details, 'name', ticker) or ticker
+            if isinstance(company_name, str) and len(company_name) > 100:
+                company_name = company_name[:100]
+
             defaults = {
-                'company_name': getattr(details, 'name', ticker),
+                'company_name': company_name,
                 'updated_at': datetime.now(),
             }
 
-            # Try to set additional fields if the model supports them
             optional_map = {
                 'description': getattr(details, 'description', None),
                 'market_cap': getattr(details, 'market_cap', None),
