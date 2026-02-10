@@ -17,6 +17,7 @@ from stock_service import (
     StockInfoResponse,
     StockHistoryResponse
 )
+from updateendpoint import update_stock_data
 from polygon_stock_service import fetch_and_update_symbols
 
 logging.basicConfig(level=logging.INFO)
@@ -25,6 +26,11 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Stock Data Fetcher", version="1.0.0")
 data_fetcher = DataFetcher()
 db_service = DatabaseService()
+
+@app.get("/update-stock-history")
+async def update_stock_history(ticker: str, is_hourly: bool = False):
+    update_stock_data(ticker, is_hourly=is_hourly)
+    return {"message": f"Updated {ticker} data ({'hourly' if is_hourly else 'minute-level'})"}
 
 @app.on_event("startup")
 async def startup_event():

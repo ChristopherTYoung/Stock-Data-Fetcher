@@ -98,6 +98,12 @@ class DatabaseService:
             logger.error(f"Database error while saving data for {ticker}: {str(e)}")
             raise
         
+        return rows_inserted
+    
+    def add_gap_to_blacklist(self, ticker: str, gap_start: datetime, is_hourly: bool = False) -> None:
+        """Add a gap to the blacklist."""
+        with get_db() as db:
+            blacklist_entry = Blacklist(
                 stock_symbol=ticker,
                 timestamp=gap_start,
                 time_added=datetime.now(),
