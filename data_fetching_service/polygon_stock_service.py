@@ -210,11 +210,25 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
     return saved_count
 
 
-def fetch_and_update_symbols() -> int:
+def fetch_and_update_symbols(worker_id: Optional[str] = None, total_workers: int = 1) -> int:
     data = fetch_new_stocks_from_polygon()
     if not data:
         print("ERROR: No data fetched from Polygon")
         return 0
+
+    # Partition stocks for this worker
+    if worker_id and total_workers > 1:
+        try:
+            worker_hash = hash(worker_id) % total_workers
+            
+            partitioned_data = [stock for i, stock in enumerate(data) if i % total_workers == worker_hash]
+            
+            print(f"Worker {worker_id} (hash={worker_hash}): Processing {len(partitioned_data)}/{len(data)} stocks")
+            print(f"Worker {worker_id}: Processing indices {worker_hash}, {worker_hash + total_workers}, {worker_hash + total_workers * 2}, ...")
+            
+            data = partitioned_data
+        except Exception as e:
+            print(f"WARNING: Could not partition stocks for worker_id '{worker_id}', processing all stocks: {e}")
 
     saved = update_stocks_in_db_from_polygon(data)
     return saved

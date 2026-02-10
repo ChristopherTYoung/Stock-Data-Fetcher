@@ -76,6 +76,24 @@ create table incrementum.custom_collection_stock (
 alter table incrementum.custom_collection_stock
     add constraint custom_collection_stock_collection_id_stock_symbol_key unique (collection_id, stock_symbol);
 
+create table if not exists incrementum.blacklist (
+    id int primary key generated always as identity,
+    stock_symbol varchar(10) not null,
+    timestamp timestamp not null,
+    time_added timestamp not null,
+    foreign key (stock_symbol) references incrementum.stock(symbol) on delete cascade,
+    unique (stock_symbol, timestamp)
+);
+
+create table if not exists incrementum.user_stock_potential (
+    id int primary key generated always as identity,
+    account_id int not null references incrementum.account(id) on delete cascade,
+    stock_symbol varchar(10) not null references incrementum.stock(symbol) on delete cascade,
+    purchase_date date not null,
+    quantity numeric(15, 4) not null,
+    purchase_price numeric(15, 2) not null
+);
+
 ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS market_cap BIGINT;
 ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS primary_exchange VARCHAR(100);
