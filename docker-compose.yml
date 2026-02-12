@@ -56,14 +56,13 @@ services:
       ORCHESTRATOR_URL: http://orchestrator:8080
       WORKER_ID: worker-1
       POLYGON_API_KEY: ${POLYGON_API_KEY}
+      DEV: 1
     depends_on:
       postgres:
         condition: service_healthy
       orchestrator:
         condition: service_started
     restart: unless-stopped
-    command: >
-      sh -c "python main.py & python worker_scheduler.py"
 
 volumes:
   postgres_data:

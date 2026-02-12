@@ -188,7 +188,9 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
     
     try:
-        asyncio.run(hourly_fetch_task())
+        dev = os.getenv("DEV")
+        if not dev:
+            asyncio.run(hourly_fetch_task())
     except KeyboardInterrupt:
         logger.info("KeyboardInterrupt received. Shutting down...")
         close_db_connections()
