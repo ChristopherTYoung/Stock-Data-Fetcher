@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import logging
 import asyncio
+import os
 from database import init_db
 from data_fetcher import DataFetcher
 from database_service import DatabaseService
@@ -17,6 +18,7 @@ from stock_service import (
     StockInfoResponse,
     StockHistoryResponse
 )
+from updateendpoint import update_stock_data
 from polygon_stock_service import fetch_and_update_symbols
 
 logging.basicConfig(level=logging.INFO)
@@ -25,6 +27,12 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Stock Data Fetcher", version="1.0.0")
 data_fetcher = DataFetcher()
 db_service = DatabaseService()
+
+@app.get("/update-stock-history")
+async def update_stock_history(ticker: str):
+    update_stock_data(ticker, is_hourly=True)
+    update_stock_data(ticker, is_hourly=False)
+    return {"message": f"Updated {ticker} data (hourly and minute-level)"}
 
 async def run_polygon_sync_background():
     """Run Polygon metadata sync in background without blocking startup."""
@@ -44,8 +52,9 @@ async def startup_event():
     logger.info("Database initialized")
     logger.info("Using yfinance for hourly (2 years) and minute (1 month) data")
     logger.info("Service ready - Polygon metadata sync running in background...")
-    
-    asyncio.create_task(run_polygon_sync_background())
+    dev = os.getenv("DEV")
+    if not dev:
+        asyncio.create_task(run_polygon_sync_background())
 
 
 
