@@ -119,3 +119,4 @@ data:
     ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS locale VARCHAR(20);
     ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS sic_code VARCHAR(20);
     ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS sic_description VARCHAR(255);
+    ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS day_percent_change DECIMAL;
