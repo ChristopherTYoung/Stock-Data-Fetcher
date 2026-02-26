@@ -1,12 +1,11 @@
-"""Data fetching service for stock data using yfinance."""
+"""Data fetching service for stock data using Polygon."""
 from datetime import datetime, timedelta, date
 from typing import List, Dict, Any, Tuple
 import pandas as pd
 import logging
 import time
-import yfinance as yf
 from polygon import RESTClient
-from database import get_db, Stock
+from database import get_db, Stock, StockHistory
 from gap_detector import GapDetector
 from database_service import DatabaseService
 from sqlalchemy import select
@@ -17,7 +16,7 @@ API_KEY = os.environ.get('POLYGON_API_KEY')
 
 
 class DataFetcher:
-    """Handles fetching and storing stock data from yfinance."""
+    """Handles fetching and storing stock data from Polygon."""
     
     def __init__(self, max_gap_fill_retries: int = 3):
         self.rate_limited = False
@@ -25,8 +24,89 @@ class DataFetcher:
         self.gap_detector = GapDetector()
         self.db_service = DatabaseService()
         self.max_gap_fill_retries = max_gap_fill_retries
+        self.calculated_fields = ["price", "high52", "low52", "percent_change"]
+    def update_stock_calcuated_fields(self, stock: Stock, db_data, history_data) -> None:
+        """Update calculated fields for a stock in the database."""
+        update_dict = {}
+        for field in self.calculated_fields:
+            ## check if the field exists in the stock object and is not None
+            if stock and hasattr(stock, field) and getattr(stock, field) is not None:
+                pass
+            else:
+                update_dict[field] = self.calculate(field, stock, db_data, history_data, update_dict)
+            self.db_service.update_stock(stock.symbol, update_dict)
+                
+    def calculate(self, field: str, stock: Stock, db_data, history_data, update_dict) -> Any:
+        """Calculate the value for a specific field based on stock_history data from the db"""
+        if field == "price":
+            with get_db() as db:
+                latest_record = db.query(StockHistory).filter(
+                    StockHistory.stock_symbol == stock.symbol,
+                    StockHistory.is_hourly == False
+                ).order_by(StockHistory.day_and_time.desc()).first()
+                if latest_record:
+                    return latest_record.close_price
+                else:
+                    return None 
+        if field == "high52":
+            with get_db() as db:
+                one_year_ago = datetime.utcnow() - timedelta(days=365)
+                high_record = db.query(StockHistory).filter(
+                    StockHistory.stock_symbol == stock.symbol,
+                    StockHistory.is_hourly == False,
+                    StockHistory.day_and_time >= one_year_ago
+                ).order_by(StockHistory.high.desc()).first()
+                if high_record:
+                    return high_record.high
+                else:
+                    return None
+        if field == "low52":
+            with get_db() as db:
+                one_year_ago = datetime.utcnow() - timedelta(days=365)
+                low_record = db.query(StockHistory).filter(
+                    StockHistory.stock_symbol == stock.symbol,
+                    StockHistory.is_hourly == False,
+                    StockHistory.day_and_time >= one_year_ago
+                ).order_by(StockHistory.low.asc()).first()
+                if low_record:
+                    return low_record.low
+                else:
+                    return None
+        if field == "percent_change":
+            with get_db() as db:
+                # find the last close that occurred during 'yesterday' (UTC)
+                today_utc = datetime.utcnow().date()
+                start_of_today = datetime(today_utc.year, today_utc.month, today_utc.day)
+                start_of_yesterday = start_of_today - timedelta(days=1)
 
-    def get_historical_data(self, ticker, from_date, to_date, timespan='day', multiplier=1):
+                last_record_yesterday = db.query(StockHistory).filter(
+                    StockHistory.stock_symbol == stock.symbol,
+                    StockHistory.is_hourly == False,
+                    StockHistory.day_and_time >= start_of_yesterday,
+                    StockHistory.day_and_time < start_of_today,
+                ).order_by(StockHistory.day_and_time.desc()).first()
+
+                latest_record = db.query(StockHistory).filter(
+                    StockHistory.stock_symbol == stock.symbol,
+                    StockHistory.is_hourly == False
+                ).order_by(StockHistory.day_and_time.desc()).first()
+
+                if not last_record_yesterday:
+                    return None
+
+                last_close = last_record_yesterday.close_price
+
+                # determine current price (prefer stock.price if present)
+                current_price = getattr(stock, 'price', None)
+                if current_price is None and latest_record:
+                    current_price = latest_record.close_price
+
+                if current_price is None or last_close in (0, None):
+                    return None
+
+                return ((current_price - last_close) / last_close) * 100
+
+    def get_historical_data(self, ticker, from_date, to_date, timespan='day', multiplier=1, Stock: Stock = None):
         """Fetch historical data from Polygon API."""
         client = RESTClient(api_key=API_KEY)
 
@@ -90,7 +170,7 @@ class DataFetcher:
                     start_date = stock.updated_at
                 
                 logger.info(f"  Fetching 2 years of hourly data for {ticker}...")
-                hourly_df = self.get_historical_data(ticker, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), timespan='hour', multiplier=1)
+                hourly_df = self.get_historical_data(ticker, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), timespan='hour', multiplier=1, Stock=stock)
                 if not hourly_df.empty:
                     rows = self.db_service.save_stock_data_to_db(ticker, hourly_df, is_hourly=True)
                     ticker_rows += rows
@@ -100,7 +180,7 @@ class DataFetcher:
                     minute_start_date = stock.updated_at
 
                 logger.info(f"  Fetching 1 month of minute data for {ticker}...")
-                minute_df = self.get_historical_data(ticker, minute_start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), timespan='minute', multiplier=1)
+                minute_df = self.get_historical_data(ticker, minute_start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), timespan='minute', multiplier=1, Stock=stock)
                 if not minute_df.empty:
                     rows = self.db_service.save_stock_data_to_db(ticker, minute_df, is_hourly=False)
                     ticker_rows += rows
@@ -119,10 +199,10 @@ class DataFetcher:
                 else:
                     results[ticker] = {
                         "success": False,
-                        "error": "No data returned from yfinance"
+                        "error": "No data returned from Polygon"
                     }
                     failed_tickers.append(ticker)
-                    logger.error(f"✗✗✗ FAILED: {ticker} - No data fetched from yfinance")
+                    logger.error(f"✗✗✗ FAILED: {ticker} - No data fetched from Polygon")
 
                 if idx < len(tickers):
                     time.sleep(3)
