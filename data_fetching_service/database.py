@@ -76,6 +76,12 @@ class Stock(Base):
     locale = Column("locale", String(20), nullable=True)
     sic_code = Column("sic_code", String(20), nullable=True)
     sic_description = Column("sic_description", String(255), nullable=True)
+    price = Column("price", Integer, nullable=True)
+    high52 = Column("high52", Integer, nullable=True)
+    low52 = Column("low52", Integer, nullable=True)
+    percent_change = Column("percent_change", Integer, nullable=True)
+    high52_updated_at = Column("high52_updated_at", DateTime, nullable=True)
+    low52_updated_at = Column("low52_updated_at", DateTime, nullable=True)
     
     def __repr__(self):
         return f"<Stock(symbol={self.symbol}, company={self.company_name})>"
