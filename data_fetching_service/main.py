@@ -3,7 +3,6 @@ from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import logging
-import asyncio
 import os
 from database import init_db
 from data_fetcher import DataFetcher
@@ -19,7 +18,6 @@ from stock_service import (
     StockHistoryResponse
 )
 from updateendpoint import update_stock_data
-from polygon_stock_service import fetch_and_update_symbols
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -34,27 +32,13 @@ async def update_stock_history(ticker: str):
     update_stock_data(ticker, is_hourly=False)
     return {"message": f"Updated {ticker} data (hourly and minute-level)"}
 
-async def run_polygon_sync_background():
-    """Run Polygon metadata sync in background without blocking startup."""
-    try:
-        logger.info("Starting background Polygon metadata sync...")
-        loop = asyncio.get_running_loop()
-        saved = await loop.run_in_executor(None, fetch_and_update_symbols)
-        logger.info(f"Polygon sync complete. Saved {saved} stocks.")
-    except Exception as e:
-        logger.error(f"Error running Polygon sync: {e}")
-
-
 @app.on_event("startup")
 async def startup_event():
     logger.info("Initializing database...")
     init_db()
     logger.info("Database initialized")
     logger.info("Using yfinance for hourly (2 years) and minute (1 month) data")
-    logger.info("Service ready - Polygon metadata sync running in background...")
-    dev = os.getenv("DEV")
-    if not dev:
-        asyncio.create_task(run_polygon_sync_background())
+    logger.info("Service ready")
 
 
 

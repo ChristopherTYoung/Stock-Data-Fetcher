@@ -12,6 +12,7 @@ import sys
 # Import the DataFetcher class and database cleanup
 from data_fetcher import DataFetcher
 from database import close_db_connections
+from polygon_stock_service import update_metadata_for_tickers
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -76,6 +77,11 @@ async def process_stock_batch(tickers: list):
     
     try:
         logger.info(f"[HISTORY] Processing {len(tickers)} tickers...")
+
+        logger.info(f"[METADATA] Updating Polygon metadata for {len(tickers)} tickers...")
+        loop = asyncio.get_running_loop()
+        metadata_saved = await loop.run_in_executor(None, update_metadata_for_tickers, tickers)
+        logger.info(f"[METADATA] Metadata update complete. Saved {metadata_saved} stocks.")
         
         # Use the DataFetcher instance to fetch data
         # This fetches 2 years of hourly data + 1 month of minute data

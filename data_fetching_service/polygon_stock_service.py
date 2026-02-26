@@ -218,3 +218,19 @@ def fetch_and_update_symbols() -> int:
 
     saved = update_stocks_in_db_from_polygon(data)
     return saved
+
+
+def update_metadata_for_tickers(tickers: List[str], status_dict: Optional[Dict[str, int]] = None) -> int:
+    if not tickers:
+        return 0
+
+    stock_data = [
+        {'symbol': ticker.strip().upper()}
+        for ticker in tickers
+        if isinstance(ticker, str) and ticker.strip()
+    ]
+
+    if not stock_data:
+        return 0
+
+    return update_stocks_in_db_from_polygon(stock_data, status_dict=status_dict)
