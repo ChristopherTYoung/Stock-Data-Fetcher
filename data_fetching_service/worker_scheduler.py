@@ -1,5 +1,5 @@
 """
-Scheduled worker that fetches stock batches from orchestrator every hour.
+Scheduled worker that fetches stock batches from orchestrator every 10 minutes.
 """
 import asyncio
 import httpx
@@ -8,6 +8,8 @@ from datetime import datetime
 import os
 import signal
 import sys
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 # Import the DataFetcher class and database cleanup
 from data_fetcher import DataFetcher
@@ -18,10 +20,9 @@ logger = logging.getLogger(__name__)
 
 ORCHESTRATOR_URL = os.getenv("ORCHESTRATOR_URL", "http://localhost:8080")
 WORKER_ID = os.getenv("WORKER_ID", "worker-1")
-FETCH_INTERVAL_SECONDS = 3600  # 1 hour
-
 # Create a DataFetcher instance
 data_fetcher = DataFetcher()
+scheduler = AsyncIOScheduler()
 
 
 async def fetch_batch_from_orchestrator() -> list:
@@ -138,46 +139,52 @@ async def process_gap_detection_batch(tickers: list):
         traceback.print_exc()
 
 
-async def hourly_fetch_task():
-    """Background task that fetches and processes stocks every hour."""
-    logger.info(f"Starting hourly fetch task (Worker ID: {WORKER_ID})")
-    logger.info(f"Orchestrator URL: {ORCHESTRATOR_URL}")
-    logger.info(f"Fetch interval: {FETCH_INTERVAL_SECONDS} seconds")
-    
-    while True:
-        try:
-            logger.info(f"[{datetime.now()}] Starting hourly fetch cycle...")
-            
-            # Priority 1: Fetch batch for history updates from orchestrator
-            history_tickers = await fetch_batch_from_orchestrator()
-            
-            # Process the history batch if available
-            if history_tickers:
-                await process_stock_batch(history_tickers)
+async def run_fetch_cycle():
+    """Run one fetch cycle for history updates first, then gap detection if idle."""
+    try:
+        logger.info(f"[{datetime.now()}] Starting scheduled fetch cycle...")
+
+        # Priority 1: Fetch batch for history updates from orchestrator
+        history_tickers = await fetch_batch_from_orchestrator()
+
+        # Process the history batch if available
+        if history_tickers:
+            await process_stock_batch(history_tickers)
+        else:
+            logger.info("[HISTORY] No history update work available")
+
+            # Priority 2: Only check gap detection if no history work
+            gap_tickers = await fetch_gap_detection_batch()
+
+            if gap_tickers:
+                await process_gap_detection_batch(gap_tickers)
             else:
-                logger.info("[HISTORY] No history update work available")
-                
-                # Priority 2: Only check gap detection if no history work
-                gap_tickers = await fetch_gap_detection_batch()
-                
-                if gap_tickers:
-                    await process_gap_detection_batch(gap_tickers)
-                else:
-                    logger.info("[GAP DETECTION] No gap detection work available")
-                    logger.info("No work available in either queue")
-            
-            logger.info(f"Fetch cycle complete. Sleeping for {FETCH_INTERVAL_SECONDS} seconds...")
-            
-        except Exception as e:
-            logger.error(f"Error in hourly fetch cycle: {str(e)}")
-        
-        # Wait for next cycle
-        await asyncio.sleep(FETCH_INTERVAL_SECONDS)
+                logger.info("[GAP DETECTION] No gap detection work available")
+                logger.info("No work available in either queue")
+
+        logger.info("Fetch cycle complete")
+
+    except Exception as e:
+        logger.error(f"Error in scheduled fetch cycle: {str(e)}")
+
+
+def schedule_fetch_task():
+    """Schedule fetch cycle every 10 minutes (UTC)."""
+    scheduler.add_job(
+        run_fetch_cycle,
+        trigger=CronTrigger(minute="*/10"),
+        id="ten_minute_worker_fetch",
+        name="Ten-Minute Worker Fetch",
+        replace_existing=True,
+    )
+    scheduler.start()
 
 
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully."""
     logger.info(f"Received signal {signum}. Shutting down gracefully...")
+    if scheduler.running:
+        scheduler.shutdown()
     close_db_connections()
     sys.exit(0)
 
@@ -190,11 +197,19 @@ if __name__ == "__main__":
     try:
         dev = os.getenv("DEV")
         if not dev:
-            asyncio.run(hourly_fetch_task())
+            logger.info(f"Starting worker scheduler (Worker ID: {WORKER_ID})")
+            logger.info(f"Orchestrator URL: {ORCHESTRATOR_URL}")
+            logger.info("Scheduled fetch every 10 minutes (UTC)")
+            schedule_fetch_task()
+            asyncio.get_event_loop().run_forever()
     except KeyboardInterrupt:
         logger.info("KeyboardInterrupt received. Shutting down...")
+        if scheduler.running:
+            scheduler.shutdown()
         close_db_connections()
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
+        if scheduler.running:
+            scheduler.shutdown()
         close_db_connections()
         raise
