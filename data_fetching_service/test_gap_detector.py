@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from gap_detector import GapDetector
+from data_fetching_service.gap_detector import GapDetector
 
 # Create test-specific models without schema for SQLite compatibility
 TestBase = declarative_base()

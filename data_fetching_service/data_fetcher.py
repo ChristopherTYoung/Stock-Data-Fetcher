@@ -33,10 +33,10 @@ class DataFetcher:
             if stock and hasattr(stock, field) and getattr(stock, field) is not None:
                 pass
             else:
-                update_dict[field] = self.calculate(field, stock, db_data, history_data, update_dict)
+                update_dict[field] = self.calculate(field, stock, db_data, update_dict)
             self.db_service.update_stock(stock.symbol, update_dict)
                 
-    def calculate(self, field: str, stock: Stock, db_data, history_data, update_dict) -> Any:
+    def calculate(self, field: str, stock: Stock, db_data, update_dict) -> Any:
         """Calculate the value for a specific field based on stock_history data from the db"""
         if field == "price":
             with get_db() as db:
@@ -119,7 +119,6 @@ class DataFetcher:
             adjusted=True,
             sort="asc"
         )
-
         data = []
         for bar in aggs:
             data.append({
@@ -133,6 +132,7 @@ class DataFetcher:
 
         df = pd.DataFrame(data)
         if not df.empty:
+            self.update_stock_calcuated_fields(Stock, aggs, df)
             df.set_index('timestamp', inplace=True)
         return df
 

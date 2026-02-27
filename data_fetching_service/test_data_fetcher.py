@@ -1,23 +1,49 @@
 import pytest
 from datetime import datetime, timedelta
-from data_fetcher import DataFetcher
-from database import get_db, StockHistory, Stock
+from data_fetching_service.data_fetcher import DataFetcher
+import data_fetching_service.data_fetcher as dfmod
+import database as dbmod
+
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, BigInteger, Text, Numeric
+from sqlalchemy.orm import sessionmaker, declarative_base
+from contextlib import contextmanager
+
+
+BaseTest = declarative_base()
+
+
+class TestStockHistory(BaseTest):
+    __tablename__ = "stock_history"
+    stock_symbol = Column(String(20), primary_key=True, nullable=False)
+    day_and_time = Column(DateTime, primary_key=True, nullable=False)
+    is_hourly = Column(Boolean, primary_key=True, nullable=False)
+    open_price = Column(Integer, nullable=False)
+    close_price = Column(Integer, nullable=False)
+    high = Column(Integer, nullable=False)
+    low = Column(Integer, nullable=False)
+    volume = Column(Integer, nullable=False)
+
+
+class TestStock(BaseTest):
+    __tablename__ = "stock"
+    symbol = Column(String(10), primary_key=True)
+    company_name = Column(String(100), nullable=False)
+    updated_at = Column(DateTime, nullable=False)
+    price = Column(Integer, nullable=True)
 
 
 def make_stock(symbol="TEST"):
-    s = Stock(symbol=symbol, company_name="Test Co", updated_at=datetime.utcnow())
-    return s
+    return TestStock(symbol=symbol, company_name="Test Co", updated_at=datetime.utcnow())
 
 
 @pytest.fixture
 def db_rows():
-    # prepare three days of daily data
     now = datetime.utcnow().replace(hour=12, minute=0, second=0, microsecond=0)
     yesterday = now - timedelta(days=1)
     one_year_ago = now - timedelta(days=200)
 
     rows = [
-        StockHistory(
+        TestStockHistory(
             stock_symbol="TEST",
             day_and_time=one_year_ago,
             is_hourly=False,
@@ -27,7 +53,7 @@ def db_rows():
             low=90,
             volume=1000,
         ),
-        StockHistory(
+        TestStockHistory(
             stock_symbol="TEST",
             day_and_time=yesterday - timedelta(hours=2),
             is_hourly=False,
@@ -37,7 +63,7 @@ def db_rows():
             low=195,
             volume=2000,
         ),
-        StockHistory(
+        TestStockHistory(
             stock_symbol="TEST",
             day_and_time=now,
             is_hourly=False,
@@ -51,47 +77,61 @@ def db_rows():
     return rows
 
 
+def _setup_in_memory(db_rows):
+    engine = create_engine("sqlite:///:memory:")
+    SessionLocal = sessionmaker(bind=engine)
+    BaseTest.metadata.create_all(engine)
+
+    # insert rows
+    s = SessionLocal()
+    s.add(make_stock())
+    for r in db_rows:
+        s.add(r)
+    s.commit()
+    s.close()
+
+    # monkeypatch data_fetcher module to use test models and test session
+    def fake_get_db():
+        @contextmanager
+        def _cm():
+            session = SessionLocal()
+            try:
+                yield session
+            finally:
+                session.close()
+
+        return _cm()
+
+    # override references in the module under test
+    dfmod.get_db = fake_get_db
+    dfmod.Stock = TestStock
+    dfmod.StockHistory = TestStockHistory
+
+
 def test_price_and_high_low52(db_rows):
+    _setup_in_memory(db_rows)
     df = DataFetcher()
 
-    # Insert rows into DB
-    with get_db() as db:
-        # ensure stock row exists
-        db.add(make_stock())
-        for r in db_rows:
-            db.add(r)
-        db.commit()
+    # load stock object from test DB
+    with dfmod.get_db() as db:
+        stock = db.query(dfmod.Stock).filter(dfmod.Stock.symbol == "TEST").first()
 
-    # load stock object
-    with get_db() as db:
-        stock = db.query(Stock).filter(Stock.symbol == "TEST").first()
-
-    # Calculate price (should be latest close_price)
-    price = df.calculate("price", stock, None, None, {})
+    price = df.calculate("price", stock, None, {})
     assert price == 225
 
-    # high52 should be max high in past year (we put 230)
-    high52 = df.calculate("high52", stock, None, None, {})
+    high52 = df.calculate("high52", stock, None, {})
     assert high52 == 230
 
-    # low52 should be min low in past year (we put 90)
-    low52 = df.calculate("low52", stock, None, None, {})
+    low52 = df.calculate("low52", stock, None, {})
     assert low52 == 90
 
 
 def test_percent_change(db_rows):
+    _setup_in_memory(db_rows)
     df = DataFetcher()
 
-    with get_db() as db:
-        # Ensure stock exists
-        db.add(make_stock())
-        for r in db_rows:
-            db.add(r)
-        db.commit()
+    with dfmod.get_db() as db:
+        stock = db.query(dfmod.Stock).filter(dfmod.Stock.symbol == "TEST").first()
 
-    with get_db() as db:
-        stock = db.query(Stock).filter(Stock.symbol == "TEST").first()
-
-    pct = df.calculate("percent_change", stock, None, None, {})
-    # yesterday close_price was 210, current/latest is 225 -> ((225-210)/210)*100 = 7.142857...
+    pct = df.calculate("percent_change", stock, None, {})
     assert pytest.approx(pct, rel=1e-3) == 7.142857142857143
