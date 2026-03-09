@@ -7,3 +7,4 @@ sqlalchemy==2.0.23
 psycopg2-binary==2.9.9
 httpx==0.25.2
 polygon-api-client
+apscheduler==3.10.4

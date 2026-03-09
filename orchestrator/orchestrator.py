@@ -33,7 +33,7 @@ def refresh_stock_queues():
 @app.on_event("startup")
 async def startup_event():
     """Initialize on startup."""
-    logger.info("Starting Stock Orchestrator with scheduled daily refresh...")
+    logger.info("Starting Stock Orchestrator with scheduled hourly refresh...")
     
     try:
         polygon_service.initialize()
@@ -42,9 +42,9 @@ async def startup_event():
         
         scheduler.add_job(
             refresh_stock_queues,
-            trigger=CronTrigger(hour=0, minute=0),
-            id='daily_stock_refresh',
-            name='Daily Stock List Refresh',
+            trigger=CronTrigger(minute=59),
+            id='hourly_stock_refresh',
+            name='Hourly Stock List Refresh',
             replace_existing=True
         )
 
@@ -54,7 +54,7 @@ async def startup_event():
         logger.info(f"Stock Orchestrator started successfully")
         logger.info(f"History queue: {status.history_updates['remaining']} stocks | "
                    f"Gap detection queue: {status.gap_detection['remaining']} stocks")
-        logger.info("Scheduled daily refresh at 12:00 AM UTC")
+        logger.info("Scheduled hourly refresh at minute 0 of every hour (UTC)")
         
     except Exception as e:
         logger.error(f"Failed to start orchestrator: {str(e)}")

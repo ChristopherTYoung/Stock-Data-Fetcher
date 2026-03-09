@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from gap_detector import GapDetector
+from data_fetching_service.gap_detector import GapDetector
 
 # Create test-specific models without schema for SQLite compatibility
 TestBase = declarative_base()
@@ -68,7 +68,7 @@ def setup_gap_detector_for_test(gap_detector, test_db, monkeypatch):
     def mock_get_db():
         yield test_db
     
-    monkeypatch.setattr("gap_detector.get_db", mock_get_db)
+    monkeypatch.setattr("data_fetching_service.gap_detector.get_db", mock_get_db)
     
     # Set model references on the gap_detector instance
     gap_detector.Stock = TestStock
@@ -398,7 +398,7 @@ def test_complete_data_no_gaps(test_db, gap_detector, sample_stock, monkeypatch)
     mock_datetime.now = Mock(return_value=fixed_now)
     
     setup_gap_detector_for_test(gap_detector, test_db, monkeypatch)
-    monkeypatch.setattr("gap_detector.datetime", mock_datetime)
+    monkeypatch.setattr("data_fetching_service.gap_detector.datetime", mock_datetime)
     
     # Add complete hourly data for 2 years + a bit extra, starting from now
     # We add extra to ensure we go beyond the 2-year boundary

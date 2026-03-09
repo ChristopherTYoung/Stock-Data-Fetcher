@@ -1,8 +1,9 @@
 from datetime import datetime
 from typing import List, Dict, Any, Optional
+import os
 import pandas as pd
 import logging
-import yfinance as yf
+from polygon import RESTClient
 from database import get_db, StockHistory, Stock, Blacklist
 from sqlalchemy import select, delete
 
@@ -17,28 +18,75 @@ class DatabaseService:
         result = db.execute(select(Stock).where(Stock.symbol == ticker)).first()
         
         if result is None:
+            api_key = os.environ.get('POLYGON_API_KEY')
+            company_name = ticker
+
+            if api_key:
+                try:
+                    client = RESTClient(api_key)
+                    details = client.get_ticker_details(ticker)
+                    company_name = getattr(details, 'name', None) or ticker
+                    if isinstance(company_name, str) and len(company_name) > 100:
+                        company_name = company_name[:100]
+                    logger.info(f"Fetched company name for {ticker} from Polygon: {company_name}")
+                except Exception as e:
+                    logger.warning(f"Could not fetch company name for {ticker} from Polygon, using ticker as name: {e}")
+
+            new_stock = Stock(
+                symbol=ticker,
+                company_name=company_name,
+                updated_at=datetime.now()
+            )
+            db.add(new_stock)
+            db.commit()
+            logger.info(f"Added stock {ticker} ({company_name}) to stock table")
+
+    def update_stock(self, ticker: str, updates: Dict[str, Any], create_if_missing: bool = False) -> int:
+        """Update stock metadata for `ticker` using the provided `updates` map.
+
+        - `updates` is a dict mapping column names to values.
+        - Only columns present on the `Stock` table will be applied.
+        - If `create_if_missing` is True, a missing stock row will be created via `ensure_stock_exists`.
+
+        Returns the number of rows updated (0 or 1).
+        """
+        if not updates:
+            logger.warning(f"No updates provided for {ticker}")
+            return 0
+
+        with get_db() as db:
+            allowed_columns = set(Stock.__table__.columns.keys())
+
+            payload: Dict[str, Any] = {}
+            for col, val in updates.items():
+                if col == 'symbol':
+                    continue
+                if col in allowed_columns:
+                    payload[col] = val
+                else:
+                    logger.debug(f"Ignoring unknown column '{col}' for Stock")
+
+            if not payload:
+                logger.warning(f"No valid columns to update for {ticker}")
+                return 0
+
+            existing = db.execute(select(Stock).where(Stock.symbol == ticker)).first()
+            if not existing:
+                if create_if_missing:
+                    self.ensure_stock_exists(ticker, db)
+                else:
+                    logger.warning(f"Stock {ticker} does not exist and create_if_missing is False")
+                    return 0
+
+            result = db.execute(Stock.__table__.update().where(Stock.symbol == ticker).values(**payload))
             try:
-                stock_info = yf.Ticker(ticker)
-                company_name = stock_info.info.get('longName', stock_info.info.get('shortName', ticker))
-                
-                new_stock = Stock(
-                    symbol=ticker,
-                    company_name=company_name,
-                    updated_at=datetime.now()
-                )
-                db.add(new_stock)
-                db.commit()
-                logger.info(f"Added stock {ticker} ({company_name}) to stock table")
-            except Exception as e:
-                logger.warning(f"Could not fetch company name for {ticker}, using ticker as name: {e}")
-                new_stock = Stock(
-                    symbol=ticker,
-                    company_name=ticker,
-                    updated_at=datetime.now()
-                )
-                db.add(new_stock)
-                db.commit()
-                logger.info(f"Added stock {ticker} to stock table with ticker as name")
+                rowcount = result.rowcount
+            except Exception:
+                rowcount = 0
+
+            db.commit()
+            logger.info(f"Updated {rowcount} rows for {ticker}: {list(payload.keys())}")
+            return rowcount
 
     def save_stock_data_to_db(self, ticker: str, df: pd.DataFrame, is_hourly: bool = False) -> int:
         """Save stock data DataFrame to database."""
