@@ -85,7 +85,7 @@ class DatabaseService:
                 rowcount = 0
 
             db.commit()
-            logger.info(f"Updated {rowcount} rows for {ticker}: {list(payload.keys())}")
+            logger.info(f"Updated {rowcount} rows for {ticker}: {payload}")
             return rowcount
 
     def save_stock_data_to_db(self, ticker: str, df: pd.DataFrame, is_hourly: bool = False) -> int:
