@@ -30,19 +30,20 @@ class DataFetcher:
         """Update calculated fields for a stock in the database.
 
         Behavior:
-        - If a Stock object is provided with existing values, prefer history_data to update those fields.
-        - If a field on the Stock is None, calculate it from DB data (fallback).
-        - For initialization (when stock is None), prefer history_data and fall back to DB.
+        - Always prefer history_data if available, as it's the most recent data
+        - Fall back to DB data only if history_data is not provided or is empty
         
         Returns:
             Dictionary of calculated fields. Updates the DB directly if stock object is provided.
         """
+        # Check if we have valid history_data to use
+        has_history = isinstance(history_data, pd.DataFrame) and not history_data.empty
+        
         update_dict = {}
         for field in self.calculated_fields:
-            has_value = bool(stock and hasattr(stock, field) and getattr(stock, field) is not None)
-            # For initialization (no stock provided) we want a combination of
-            # history data and DB data: prefer history but fall back to DB.
-            prefer_history = has_value or (stock is None)
+            # Always prefer history_data when available, since it's fresher
+            # Only use DB fallback when history_data is None/empty
+            prefer_history = has_history
             update_dict[field] = self.calculate(field, stock, db_data, update_dict, history_data, prefer_history=prefer_history)
 
         # If a Stock instance with a symbol was provided, perform a single DB update.
@@ -88,8 +89,18 @@ class DataFetcher:
         
         return None
 
-    def get_historical_data(self, ticker, from_date, to_date, timespan='day', multiplier=1, Stock: Stock = None):
-        """Fetch historical data from Polygon API."""
+    def get_historical_data(self, ticker, from_date, to_date, timespan='day', multiplier=1, Stock: Stock = None, is_gap_fill: bool = False):
+        """Fetch historical data from Polygon API.
+        
+        Args:
+            ticker: Stock symbol
+            from_date: Start date
+            to_date: End date  
+            timespan: 'day', 'hour', or 'minute'
+            multiplier: Multiplier for timespan
+            Stock: Stock object (if available)
+            is_gap_fill: If True, skip calculated field updates (gap fills shouldn't update current metrics)
+        """
         client = RESTClient(api_key=API_KEY)
 
         aggs = client.list_aggs(
@@ -113,19 +124,27 @@ class DataFetcher:
             })
 
         df = pd.DataFrame(data)
-        if not df.empty:
-            # Update calculated fields. If `Stock` is None (initialization),
-            # prefer history-based values but fall back to DB. When `Stock` is
-            # None, `update_stock_calcuated_fields` will return the computed
-            # dict instead of performing the DB update; use it to create/update
-            # the stock record by symbol.
+        if not df.empty and not is_gap_fill:
+            # Only update calculated fields when NOT gap filling
+            # Gap fills are historical data that hasn't been saved to DB yet,
+            # so prepare_combined_dataframe can't access it and calculations fail
+            # Calculated fields should reflect CURRENT stock state, not historical gaps
+            logger.debug(f"Updating calculated fields for {ticker} from {timespan} data")
             result = self.update_stock_calcuated_fields(Stock, aggs, df)
-            # If Stock was None (initialization), use ticker to update/create the entry
-            if result and (Stock is None or getattr(Stock, 'symbol', None) is None):
+            # Only update DB if Stock was None (initialization case)
+            # If Stock is provided, update_stock_calcuated_fields already did the update
+            if result and Stock is None:
                 try:
                     self.db_service.update_stock(ticker, result)
-                except Exception:
-                    logger.warning(f"Could not update stock record for {ticker}; caller may handle creation")
+                    logger.info(f"Updated stock record for {ticker}: {result}")
+                except Exception as e:
+                    logger.warning(f"Could not update stock record for {ticker}: {e}")
+        elif df.empty and not is_gap_fill:
+            logger.debug(f"No data fetched for {ticker}, skipping calculated field updates")
+        elif is_gap_fill:
+            logger.debug(f"Gap fill mode: skipping calculated field updates for {ticker} (data will be in DB soon)")
+        
+        if not df.empty:
             df.set_index('timestamp', inplace=True)
         return df
 
@@ -266,9 +285,9 @@ class DataFetcher:
                     logger.info(f"Filling gap for {ticker}: {gap_start} to {gap_end} (hourly={is_hourly}){retry_msg}")
                     
                     if is_hourly:
-                        df = self.get_historical_data(ticker, gap_start.strftime('%Y-%m-%d'), gap_end.strftime('%Y-%m-%d'), timespan='hour', multiplier=1, Stock=stock)
+                        df = self.get_historical_data(ticker, gap_start.strftime('%Y-%m-%d'), gap_end.strftime('%Y-%m-%d'), timespan='hour', multiplier=1, Stock=stock, is_gap_fill=True)
                     else:
-                        df = self.get_historical_data(ticker, gap_start.strftime('%Y-%m-%d'), gap_end.strftime('%Y-%m-%d'), timespan='minute', multiplier=1, Stock=stock)
+                        df = self.get_historical_data(ticker, gap_start.strftime('%Y-%m-%d'), gap_end.strftime('%Y-%m-%d'), timespan='minute', multiplier=1, Stock=stock, is_gap_fill=True)
                     
                     if not df.empty:
                         rows_inserted = self.db_service.save_stock_data_to_db(ticker, df, is_hourly=is_hourly)

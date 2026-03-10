@@ -22,7 +22,29 @@ create table if not exists incrementum.watchlist (
 create table if not exists incrementum.stock (
     symbol varchar(10) primary key,
     company_name varchar(100) not null,
-    updated_at timestamp not null default current_timestamp
+    updated_at timestamp not null default current_timestamp,
+    description text,
+    market_cap bigint,
+    primary_exchange varchar(100),
+    type varchar(50),
+    currency_name varchar(50),
+    cik varchar(50),
+    composite_figi varchar(50),
+    share_class_figi varchar(50),
+    outstanding_shares bigint,
+    eps numeric(20, 6),
+    homepage_url varchar(255),
+    total_employees integer,
+    list_date timestamp,
+    locale varchar(20),
+    sic_code varchar(20),
+    sic_description varchar(255),
+    price integer,
+    high52 integer,
+    low52 integer,
+    percent_change integer,
+    high52_updated_at timestamp,
+    low52_updated_at timestamp
 );
 
 create table if not exists incrementum.stock_history (
