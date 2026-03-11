@@ -11,10 +11,13 @@ def _dp(value):
     return dp
 
 
-def _make_report(liabilities, equity, beps=None, fiscal_year=2024):
+def _make_report(long_term_debt, equity, beps=None, fiscal_year=2024):
     """Build a mock financial report with balance sheet and income statement."""
     balance_sheet = MagicMock()
-    balance_sheet.liabilities = _dp(liabilities)
+    # Set only the fields the service actually reads; anything else stays as
+    # MagicMock auto-attribute so we also explicitly clear the fallback field.
+    balance_sheet.long_term_debt = _dp(long_term_debt) if long_term_debt is not None else None
+    balance_sheet.noncurrent_liabilities = None
     balance_sheet.equity = _dp(equity)
 
     income = MagicMock()
@@ -38,11 +41,15 @@ def _make_report(liabilities, equity, beps=None, fiscal_year=2024):
 class TestDebtToEquityCalculation:
     """Verify the arithmetic of the debt-to-equity computation."""
 
-    def _compute(self, liabilities, equity):
-        """Replicate the exact formula used in polygon_stock_service."""
+    def _compute(self, debt, equity):
+        """Replicate the exact formula used in polygon_stock_service.
+
+        `debt` is long-term debt (or noncurrent_liabilities as fallback),
+        NOT total liabilities.
+        """
         if equity == 0:
             return None
-        return Decimal(str(round(liabilities / equity, 4)))
+        return Decimal(str(round(debt / equity, 4)))
 
     def test_standard_ratio(self):
         result = self._compute(500_000, 250_000)
@@ -61,7 +68,7 @@ class TestDebtToEquityCalculation:
         result = self._compute(500_000, 0)
         assert result is None
 
-    def test_zero_liabilities(self):
+    def test_zero_debt(self):
         result = self._compute(0, 300_000)
         assert result == Decimal("0.0")
 
@@ -119,9 +126,9 @@ class TestPolygonStockServiceDebtToEquity:
             return execute_calls
 
     def test_debt_to_equity_stored_correctly(self):
-        """A report with liabilities=200k and equity=100k should yield D/E=2.0."""
+        """A report with long_term_debt=200k and equity=100k should yield D/E=2.0."""
         mock_client = MagicMock()
-        report = _make_report(liabilities=200_000, equity=100_000, beps=5.0, fiscal_year=2024)
+        report = _make_report(long_term_debt=200_000, equity=100_000, beps=5.0, fiscal_year=2024)
         mock_client.vx.list_stock_financials.return_value = iter([report])
 
         execute_calls = self._run_update(mock_client)
@@ -152,7 +159,7 @@ class TestPolygonStockServiceDebtToEquity:
     def test_zero_equity_debt_to_equity_is_none(self):
         """When equity is zero the D/E ratio should be None (no division by zero)."""
         mock_client = MagicMock()
-        report = _make_report(liabilities=500_000, equity=0, fiscal_year=2024)
+        report = _make_report(long_term_debt=500_000, equity=0, fiscal_year=2024)
         mock_client.vx.list_stock_financials.return_value = iter([report])
 
         # Should not raise
