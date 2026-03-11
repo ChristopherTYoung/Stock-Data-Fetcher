@@ -75,14 +75,15 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                 except (ValueError, TypeError):
                     list_date = None
 
+            def _dp_value(dp):
+                if dp is None:
+                    return None
+                return getattr(dp, 'value', dp)
+
             eps_value = None
+            debt_to_equity_value = None
             try:
                 last_year = datetime.now().year - 1
-
-                def _dp_value(dp):
-                    if dp is None:
-                        return None
-                    return getattr(dp, 'value', dp)
 
                 reports = client.vx.list_stock_financials(
                     ticker=ticker,
@@ -132,8 +133,21 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                             eps_value = Decimal(str(round(float(beps), 4)))
                         except Exception:
                             eps_value = None
+
+                    balance_sheet = getattr(fin, 'balance_sheet', None) if fin is not None else None
+                    if balance_sheet is not None:
+                        liabilities = _dp_value(getattr(balance_sheet, 'liabilities', None))
+                        equity = _dp_value(getattr(balance_sheet, 'equity', None))
+                        if liabilities is not None and equity is not None:
+                            try:
+                                equity_f = float(equity)
+                                if equity_f != 0:
+                                    debt_to_equity_value = Decimal(str(round(float(liabilities) / equity_f, 4)))
+                            except Exception:
+                                debt_to_equity_value = None
             except Exception:
                 eps_value = None
+                debt_to_equity_value = None
 
             company_name = getattr(details, 'name', ticker) or ticker
             if isinstance(company_name, str) and len(company_name) > 100:
@@ -161,6 +175,7 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                 'locale': getattr(details, 'locale', None),
                 'sic_code': getattr(details, 'sic_code', None),
                 'sic_description': getattr(details, 'sic_description', None),
+                'debt_to_equity': debt_to_equity_value,
             }
 
             for k, v in optional_map.items():

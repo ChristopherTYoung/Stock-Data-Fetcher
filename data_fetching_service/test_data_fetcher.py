@@ -2,6 +2,7 @@ import pytest
 from datetime import datetime, timedelta
 from data_fetching_service.data_fetcher import DataFetcher
 import data_fetching_service.data_fetcher as dfmod
+import stock_calculator as scalcmod
 import database as dbmod
 
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, BigInteger, Text, Numeric
@@ -77,7 +78,7 @@ def db_rows():
     return rows
 
 
-def _setup_in_memory(db_rows):
+def _setup_in_memory(db_rows, monkeypatch):
     engine = create_engine("sqlite:///:memory:")
     SessionLocal = sessionmaker(bind=engine)
     BaseTest.metadata.create_all(engine)
@@ -103,13 +104,19 @@ def _setup_in_memory(db_rows):
         return _cm()
 
     # override references in the module under test
-    dfmod.get_db = fake_get_db
-    dfmod.Stock = TestStock
-    dfmod.StockHistory = TestStockHistory
+    # Using monkeypatch ensures originals are restored after each test.
+    monkeypatch.setattr(dfmod, "get_db", fake_get_db)
+    monkeypatch.setattr(dfmod, "Stock", TestStock)
+    monkeypatch.setattr(dfmod, "StockHistory", TestStockHistory)
+
+    # Also patch stock_calculator so its DB fallback uses the same engine
+    monkeypatch.setattr(scalcmod, "get_db", fake_get_db)
+    monkeypatch.setattr(scalcmod, "StockHistory", TestStockHistory)
+    monkeypatch.setattr(scalcmod, "Stock", TestStock)
 
 
-def test_price_and_high_low52(db_rows):
-    _setup_in_memory(db_rows)
+def test_price_and_high_low52(db_rows, monkeypatch):
+    _setup_in_memory(db_rows, monkeypatch)
     df = DataFetcher()
 
     # load stock object from test DB
@@ -126,8 +133,8 @@ def test_price_and_high_low52(db_rows):
     assert low52 == 90
 
 
-def test_percent_change(db_rows):
-    _setup_in_memory(db_rows)
+def test_percent_change(db_rows, monkeypatch):
+    _setup_in_memory(db_rows, monkeypatch)
     df = DataFetcher()
 
     with dfmod.get_db() as db:

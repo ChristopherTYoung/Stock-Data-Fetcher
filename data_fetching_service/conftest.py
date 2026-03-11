@@ -78,4 +78,17 @@ if "polygon" not in sys.modules:
         dbmod.StockHistory = StockHistory
         dbmod.Blacklist = Blacklist
 
+        def get_db_session():
+            return SessionLocal()
+
+        def close_db_connections():
+            pass
+
+        def init_db():
+            BaseTest.metadata.create_all(engine)
+
+        dbmod.get_db_session = get_db_session
+        dbmod.close_db_connections = close_db_connections
+        dbmod.init_db = init_db
+
         sys.modules["database"] = dbmod

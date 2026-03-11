@@ -82,6 +82,7 @@ class Stock(Base):
     percent_change = Column("percent_change", Integer, nullable=True)
     high52_updated_at = Column("high52_updated_at", DateTime, nullable=True)
     low52_updated_at = Column("low52_updated_at", DateTime, nullable=True)
+    debt_to_equity = Column("debt_to_equity", Numeric(20, 6), nullable=True)
     
     def __repr__(self):
         return f"<Stock(symbol={self.symbol}, company={self.company_name})>"

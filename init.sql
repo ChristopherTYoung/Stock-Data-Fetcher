@@ -44,7 +44,8 @@ create table if not exists incrementum.stock (
     low52 integer,
     percent_change integer,
     high52_updated_at timestamp,
-    low52_updated_at timestamp
+    low52_updated_at timestamp,
+    debt_to_equity numeric(20, 6)
 );
 
 create table if not exists incrementum.stock_history (
