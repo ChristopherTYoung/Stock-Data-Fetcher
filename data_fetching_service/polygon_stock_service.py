@@ -136,13 +136,18 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
 
                     balance_sheet = getattr(fin, 'balance_sheet', None) if fin is not None else None
                     if balance_sheet is not None:
-                        liabilities = _dp_value(getattr(balance_sheet, 'liabilities', None))
+                        # Use long-term debt (interest-bearing obligations only) for a
+                        # standard D/E ratio.  Fall back to noncurrent_liabilities if the
+                        # filing doesn't include a discrete long_term_debt entry.
+                        debt = _dp_value(getattr(balance_sheet, 'long_term_debt', None))
+                        if debt is None:
+                            debt = _dp_value(getattr(balance_sheet, 'noncurrent_liabilities', None))
                         equity = _dp_value(getattr(balance_sheet, 'equity', None))
-                        if liabilities is not None and equity is not None:
+                        if debt is not None and equity is not None:
                             try:
                                 equity_f = float(equity)
                                 if equity_f != 0:
-                                    debt_to_equity_value = Decimal(str(round(float(liabilities) / equity_f, 4)))
+                                    debt_to_equity_value = Decimal(str(round(float(debt) / equity_f, 4)))
                             except Exception:
                                 debt_to_equity_value = None
             except Exception:
