@@ -98,7 +98,7 @@ class DataFetcher:
             try:
                 stock = None
                 with get_db() as db:
-                    stock = db.execute(select(Stock).where(Stock.symbol == ticker)).first()
+                    stock = db.execute(select(Stock).where(Stock.symbol == ticker)).scalars().first()
                 logger.info(f"Processing {ticker} ({idx}/{len(tickers)})")
                 ticker_rows = 0
                 start_date = end_date - timedelta(days=730)
@@ -197,7 +197,7 @@ class DataFetcher:
         # Fetch stock once for gap filling
         stock = None
         with get_db() as db:
-            stock = db.execute(select(Stock).where(Stock.symbol == ticker)).first()
+            stock = db.execute(select(Stock).where(Stock.symbol == ticker)).scalars().first()
         
         for gap_start, gap_end, is_hourly in gaps:
             retry_count = 0
