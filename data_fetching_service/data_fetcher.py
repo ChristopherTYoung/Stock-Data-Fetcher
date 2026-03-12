@@ -8,7 +8,6 @@ from polygon import RESTClient
 from database import get_db, Stock, StockHistory
 from gap_detector import GapDetector
 from database_service import DatabaseService
-from stock_calculator import StockCalculator
 from sqlalchemy import select
 import os
 
@@ -25,69 +24,7 @@ class DataFetcher:
         self.gap_detector = GapDetector()
         self.db_service = DatabaseService()
         self.max_gap_fill_retries = max_gap_fill_retries
-        self.calculated_fields = ["price", "high52", "low52", "percent_change"]
-    def update_stock_calcuated_fields(self, stock: Stock, db_data, history_data) -> Dict[str, Any]:
-        """Update calculated fields for a stock in the database.
-
-        Behavior:
-        - Always prefer history_data if available, as it's the most recent data
-        - Fall back to DB data only if history_data is not provided or is empty
-        
-        Returns:
-            Dictionary of calculated fields. Updates the DB directly if stock object is provided.
-        """
-        # Check if we have valid history_data to use
-        has_history = isinstance(history_data, pd.DataFrame) and not history_data.empty
-        
-        update_dict = {}
-        for field in self.calculated_fields:
-            # Always prefer history_data when available, since it's fresher
-            # Only use DB fallback when history_data is None/empty
-            prefer_history = has_history
-            update_dict[field] = self.calculate(field, stock, db_data, update_dict, history_data, prefer_history=prefer_history)
-
-        # If a Stock instance with a symbol was provided, perform a single DB update.
-        if stock is not None and getattr(stock, 'symbol', None):
-            self.db_service.update_stock(stock.symbol, update_dict)
-
-        # Return the computed dict so callers can use it during initialization
-        return update_dict
-    
-    def calculate(self, field: str, stock: Stock, db_data, update_dict, history_data=None, prefer_history: bool = False) -> Any:
-        """Calculate the value for a specific field based on stock history data and DB.
-
-        Dispatches to StockCalculator static methods:
-        - calculate_price(): Always prefers latest close from history_data if available.
-        - calculate_high52(): Combines history_data with DB rows from past year.
-        - calculate_low52(): Combines history_data with DB rows from past year.
-        - calculate_percent_change(): Combines history_data with DB rows from past year.
-        """
-        symbol = getattr(stock, 'symbol', None) if stock else None
-        
-        if prefer_history and history_data is not None:
-            try:
-                if field == 'price':
-                    return StockCalculator.calculate_price(history_data, stock)
-                elif field == 'high52':
-                    return StockCalculator.calculate_high52(history_data, stock, symbol)
-                elif field == 'low52':
-                    return StockCalculator.calculate_low52(history_data, stock, symbol)
-                elif field == 'percent_change':
-                    return StockCalculator.calculate_percent_change(history_data, stock, symbol)
-            except Exception as e:
-                logger.warning(f"Failed to calculate {field} from history_data, falling back to DB: {e}")
-        
-        # Fallback: calculate from DB only
-        if field == 'price':
-            return StockCalculator.calculate_price(None, stock)
-        elif field == 'high52':
-            return StockCalculator.calculate_high52(None, stock, symbol)
-        elif field == 'low52':
-            return StockCalculator.calculate_low52(None, stock, symbol)
-        elif field == 'percent_change':
-            return StockCalculator.calculate_percent_change(None, stock, symbol)
-        
-        return None
+        self.calculated_fields = ["price", "high52", "low52", "percent_change", "price_per_earnings"]
 
     def get_historical_data(self, ticker, from_date, to_date, timespan='day', multiplier=1, Stock: Stock = None, is_gap_fill: bool = False):
         """Fetch historical data from Polygon API.
@@ -125,22 +62,9 @@ class DataFetcher:
 
         df = pd.DataFrame(data)
         if not df.empty and not is_gap_fill:
-            # Only update calculated fields when NOT gap filling
-            # Gap fills are historical data that hasn't been saved to DB yet,
-            # so prepare_combined_dataframe can't access it and calculations fail
-            # Calculated fields should reflect CURRENT stock state, not historical gaps
-            logger.debug(f"Updating calculated fields for {ticker} from {timespan} data")
-            result = self.update_stock_calcuated_fields(Stock, aggs, df)
-            # Only update DB if Stock was None (initialization case)
-            # If Stock is provided, update_stock_calcuated_fields already did the update
-            if result and Stock is None:
-                try:
-                    self.db_service.update_stock(ticker, result)
-                    logger.info(f"Updated stock record for {ticker}: {result}")
-                except Exception as e:
-                    logger.warning(f"Could not update stock record for {ticker}: {e}")
+            logger.debug(f"Fetched data for {ticker} from {timespan} data")
         elif df.empty and not is_gap_fill:
-            logger.debug(f"No data fetched for {ticker}, skipping calculated field updates")
+            logger.debug(f"No data fetched for {ticker}")
         elif is_gap_fill:
             logger.debug(f"Gap fill mode: skipping calculated field updates for {ticker} (data will be in DB soon)")
         

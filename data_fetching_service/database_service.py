@@ -62,6 +62,7 @@ class DatabaseService:
                 if col == 'symbol':
                     continue
                 if col in allowed_columns:
+                    logger.debug("made it")
                     payload[col] = val
                 else:
                     logger.debug(f"Ignoring unknown column '{col}' for Stock")

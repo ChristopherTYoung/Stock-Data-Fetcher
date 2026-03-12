@@ -34,6 +34,13 @@ if "polygon" not in sys.modules:
             company_name = Column(String(100), nullable=False)
             updated_at = Column(DateTime, nullable=False)
             price = Column(Integer, nullable=True)
+            high52 = Column(Integer, nullable=True)
+            low52 = Column(Integer, nullable=True)
+            percent_change = Column(Integer, nullable=True)
+            eps = Column(Numeric(20, 6), nullable=True)
+            annual_growth_rate = Column(Integer, nullable=True)
+            price_per_earnings = Column(Integer, nullable=True)
+            pe_per_growth = Column(Integer, nullable=True)
 
         class StockHistory(BaseTest):
             __tablename__ = "stock_history"
