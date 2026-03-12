@@ -58,6 +58,14 @@ def _to_builtin_number(value):
     return value
 
 
+def _to_cents(value):
+    """Convert a dollar-denominated numeric value to integer cents."""
+    numeric_value = _to_builtin_number(value)
+    if numeric_value is None:
+        return None
+    return int(round(float(numeric_value) * 100))
+
+
 def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_dict: Optional[Dict[str, int]] = None) -> int:
     api_key = os.environ.get('POLYGON_API_KEY')
     if not api_key:
@@ -288,13 +296,13 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                 calculated_low52 = StockCalculator.calculate_low52(history_df, stock_for_calc)
                 calculated_percent_change = StockCalculator.calculate_percent_change(history_df, stock_for_calc)
 
-                defaults['price'] = int(round(_to_builtin_number(calculated_price))) if calculated_price is not None else None
-                defaults['high52'] = int(round(_to_builtin_number(calculated_high52))) if calculated_high52 is not None else None
-                defaults['low52'] = int(round(_to_builtin_number(calculated_low52))) if calculated_low52 is not None else None
+                defaults['price'] = _to_cents(calculated_price)
+                defaults['high52'] = _to_cents(calculated_high52)
+                defaults['low52'] = _to_cents(calculated_low52)
                 defaults['percent_change'] = int(round(_to_builtin_number(calculated_percent_change))) if calculated_percent_change is not None else None
 
-                # Calculate P/E from current stored price and latest EPS.
-                current_price = defaults['price']
+                # Keep valuation calculations in dollar units even though the DB stores cents.
+                current_price = _to_builtin_number(calculated_price)
 
                 if current_price is not None and eps_value not in (None, 0):
                     price_per_earnings_value = StockCalculator.calculate_pe(stock_for_calc, current_price)

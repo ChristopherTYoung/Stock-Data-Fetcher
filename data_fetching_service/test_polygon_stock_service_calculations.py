@@ -101,9 +101,9 @@ def test_update_stocks_persists_calculated_fields(monkeypatch, fake_details):
     with get_db() as db:
         row = db.query(Stock).filter(Stock.symbol == "TEST").first()
         assert row is not None
-        assert row.price == 110
-        assert row.high52 == 120
-        assert row.low52 == 90
+        assert row.price == 11000
+        assert row.high52 == 12000
+        assert row.low52 == 9000
         assert row.percent_change == 10
         assert row.annual_eps_growth_rate == 100
         assert int(row.price_per_earnings) == 110
