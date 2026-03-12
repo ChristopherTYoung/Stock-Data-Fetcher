@@ -81,13 +81,13 @@ async def process_stock_batch(tickers: list):
 
         logger.info(f"[METADATA] Updating Polygon metadata for {len(tickers)} tickers...")
         loop = asyncio.get_running_loop()
-        logger.info(f"[METADATA] Metadata update complete. Saved {metadata_saved} stocks.")
         
         # Use the DataFetcher instance to fetch data
         # This fetches 2 years of hourly data + 1 month of minute data
         end_date = datetime.now()
         results = data_fetcher.fetch_all_tickers_historical_data(tickers, end_date)
         metadata_saved = await loop.run_in_executor(None, update_metadata_for_tickers, tickers)
+        logger.info(f"[METADATA] Metadata update complete. Saved {metadata_saved} stocks.")
         
         summary = results.get("summary", {})
         logger.info(
