@@ -39,10 +39,10 @@ class StockCalculator:
                         for r in rows:
                             db_data_rows.append({
                                 'timestamp': r.day_and_time,
-                                'open': r.open_price,
-                                'high': r.high,
-                                'low': r.low,
-                                'close': r.close_price,
+                                'open': r.open_price / 100,
+                                'high': r.high / 100,
+                                'low': r.low / 100,
+                                'close': r.close_price / 100,
                                 'volume': r.volume
                             })
                         db_df = pd.DataFrame(db_data_rows)
@@ -96,7 +96,7 @@ class StockCalculator:
                     ).order_by(StockHistory.day_and_time.desc()).first()
                     if latest_record:
                         logger.debug(f"Retrieved price from DB for {stock.symbol}: {latest_record.close_price}")
-                        return latest_record.close_price
+                        return latest_record.close_price / 100
                     else:
                         logger.warning(f"No price records found in DB for {stock.symbol}")
             except Exception as e:
@@ -155,7 +155,7 @@ class StockCalculator:
                     ).order_by(StockHistory.high.desc()).first()
                     if high_record:
                         logger.debug(f"Retrieved 52-week high from DB for {stock.symbol}: {high_record.high}")
-                        return high_record.high
+                        return high_record.high / 100
                     else:
                         logger.warning(f"No 52-week high records found in DB for {stock.symbol}")
             except Exception as e:
@@ -214,7 +214,7 @@ class StockCalculator:
                     ).order_by(StockHistory.low.asc()).first()
                     if low_record:
                         logger.debug(f"Retrieved 52-week low from DB for {stock.symbol}: {low_record.low}")
-                        return low_record.low
+                        return low_record.low / 100
                     else:
                         logger.warning(f"No 52-week low records found in DB for {stock.symbol}")
             except Exception as e:
@@ -298,11 +298,13 @@ class StockCalculator:
                         current_price = getattr(stock, 'price', None)
                         if current_price is None and latest_record:
                             current_price = latest_record.close_price
+                            current_price = current_price / 100
                             logger.debug(f"Used latest_record close price: {current_price}")
                         
                         logger.debug(f"Percent change data for {stock.symbol}: yesterday_close={last_close}, current_price={current_price}")
                         
                         if current_price is not None and last_close not in (0, None):
+                            last_close = last_close / 100
                             percent_change = ((current_price - last_close) / last_close) * 100
                             logger.debug(f"Calculated percent change for {stock.symbol}: {percent_change:.2f}%")
                             return percent_change
