@@ -261,7 +261,7 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                 'locale': getattr(details, 'locale', None),
                 'sic_code': getattr(details, 'sic_code', None),
                 'sic_description': getattr(details, 'sic_description', None),
-                'annual_growth_rate': int(round(annual_eps_growth_rate)) if annual_eps_growth_rate is not None else None,
+                'annual_eps_growth_rate': int(round(annual_eps_growth_rate)) if annual_eps_growth_rate is not None else None,
                 'price_per_earnings': price_per_earnings_value,
                 'pe_per_growth': pe_per_growth_value,
                 'debt_to_equity': debt_to_equity_value,

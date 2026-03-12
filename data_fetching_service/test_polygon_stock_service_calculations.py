@@ -105,7 +105,7 @@ def test_update_stocks_persists_calculated_fields(monkeypatch, fake_details):
         assert row.high52 == 120
         assert row.low52 == 90
         assert row.percent_change == 10
-        assert row.annual_growth_rate == 100
+        assert row.annual_eps_growth_rate == 100
         assert int(row.price_per_earnings) == 110
         assert row.pe_per_growth == 1
 
@@ -137,5 +137,5 @@ def test_update_stocks_handles_missing_growth_denominator(monkeypatch, fake_deta
     with get_db() as db:
         row = db.query(Stock).filter(Stock.symbol == "NOGROW").first()
         assert row is not None
-        assert row.annual_growth_rate is None
+        assert row.annual_eps_growth_rate is None
         assert row.pe_per_growth is None

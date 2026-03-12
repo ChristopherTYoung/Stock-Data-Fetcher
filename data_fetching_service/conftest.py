@@ -38,7 +38,7 @@ if "polygon" not in sys.modules:
             low52 = Column(Integer, nullable=True)
             percent_change = Column(Integer, nullable=True)
             eps = Column(Numeric(20, 6), nullable=True)
-            annual_growth_rate = Column(Integer, nullable=True)
+            annual_eps_growth_rate = Column(Integer, nullable=True)
             price_per_earnings = Column(Integer, nullable=True)
             pe_per_growth = Column(Integer, nullable=True)
 
