@@ -104,7 +104,7 @@ def test_update_stocks_persists_calculated_fields(monkeypatch, fake_details):
         assert row.price == 11000
         assert row.high52 == 12000
         assert row.low52 == 9000
-        assert row.percent_change == 10
+        assert row.percent_change == 1000
         assert row.annual_eps_growth_rate == 100
         assert int(row.price_per_earnings) == 110
         assert row.pe_per_growth == 1

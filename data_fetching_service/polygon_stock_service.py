@@ -66,6 +66,14 @@ def _to_cents(value):
     return int(round(float(numeric_value) * 100))
 
 
+def _to_percent_hundredths(value):
+    """Convert a percentage value to integer hundredths of a percent."""
+    numeric_value = _to_builtin_number(value)
+    if numeric_value is None:
+        return None
+    return int(round(float(numeric_value) * 100))
+
+
 def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_dict: Optional[Dict[str, int]] = None) -> int:
     api_key = os.environ.get('POLYGON_API_KEY')
     if not api_key:
@@ -299,7 +307,7 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                 defaults['price'] = _to_cents(calculated_price)
                 defaults['high52'] = _to_cents(calculated_high52)
                 defaults['low52'] = _to_cents(calculated_low52)
-                defaults['percent_change'] = int(round(_to_builtin_number(calculated_percent_change))) if calculated_percent_change is not None else None
+                defaults['percent_change'] = _to_percent_hundredths(calculated_percent_change)
 
                 # Keep valuation calculations in dollar units even though the DB stores cents.
                 current_price = _to_builtin_number(calculated_price)
