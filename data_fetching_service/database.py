@@ -80,7 +80,7 @@ class Stock(Base):
     high52 = Column("high52", Integer, nullable=True)
     low52 = Column("low52", Integer, nullable=True)
     percent_change = Column("percent_change", Integer, nullable=True)
-    annual_growth_rate = Column("annual_growth_rate", Integer, nullable=True)
+    annual_eps_growth_rate = Column("annual_growth_rate", Integer, nullable=True)
     price_per_earnings = Column("price_per_earnings", Integer, nullable=True)
     pe_per_growth = Column("pe_per_growth", Integer, nullable=True)
     high52_updated_at = Column("high52_updated_at", DateTime, nullable=True)
