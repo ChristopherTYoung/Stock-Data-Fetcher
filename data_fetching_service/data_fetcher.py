@@ -96,27 +96,29 @@ class DataFetcher:
         
         for idx, ticker in enumerate(tickers, 1):
             try:
-                stock = None
+                stock_updated_at = None
                 with get_db() as db:
                     stock = db.execute(select(Stock).where(Stock.symbol == ticker)).scalars().first()
+                    if stock is not None:
+                        stock_updated_at = stock.updated_at
                 logger.info(f"Processing {ticker} ({idx}/{len(tickers)})")
                 ticker_rows = 0
                 start_date = end_date - timedelta(days=730)
-                if(stock is not None and stock.updated_at is not None):
-                    start_date = stock.updated_at
+                if stock_updated_at is not None:
+                    start_date = stock_updated_at
                 
                 logger.info(f"  Fetching 2 years of hourly data for {ticker}...")
-                hourly_df = self.get_historical_data(ticker, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), timespan='hour', multiplier=1, Stock=stock)
+                hourly_df = self.get_historical_data(ticker, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), timespan='hour', multiplier=1)
                 if not hourly_df.empty:
                     rows = self.db_service.save_stock_data_to_db(ticker, hourly_df, is_hourly=True)
                     ticker_rows += rows
                     logger.info(f"  Saved {rows} hourly rows for {ticker}")
                 minute_start_date = end_date - timedelta(days=28)
-                if(stock is not None and stock.updated_at is not None):
-                    minute_start_date = stock.updated_at
+                if stock_updated_at is not None:
+                    minute_start_date = stock_updated_at
 
                 logger.info(f"  Fetching 1 month of minute data for {ticker}...")
-                minute_df = self.get_historical_data(ticker, minute_start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), timespan='minute', multiplier=1, Stock=stock)
+                minute_df = self.get_historical_data(ticker, minute_start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), timespan='minute', multiplier=1)
                 if not minute_df.empty:
                     rows = self.db_service.save_stock_data_to_db(ticker, minute_df, is_hourly=False)
                     ticker_rows += rows
@@ -194,11 +196,6 @@ class DataFetcher:
         blacklisted_gaps = []
         total_rows_inserted = 0
         
-        # Fetch stock once for gap filling
-        stock = None
-        with get_db() as db:
-            stock = db.execute(select(Stock).where(Stock.symbol == ticker)).scalars().first()
-        
         for gap_start, gap_end, is_hourly in gaps:
             retry_count = 0
             gap_filled = False
@@ -209,9 +206,9 @@ class DataFetcher:
                     logger.info(f"Filling gap for {ticker}: {gap_start} to {gap_end} (hourly={is_hourly}){retry_msg}")
                     
                     if is_hourly:
-                        df = self.get_historical_data(ticker, gap_start.strftime('%Y-%m-%d'), gap_end.strftime('%Y-%m-%d'), timespan='hour', multiplier=1, Stock=stock, is_gap_fill=True)
+                        df = self.get_historical_data(ticker, gap_start.strftime('%Y-%m-%d'), gap_end.strftime('%Y-%m-%d'), timespan='hour', multiplier=1, is_gap_fill=True)
                     else:
-                        df = self.get_historical_data(ticker, gap_start.strftime('%Y-%m-%d'), gap_end.strftime('%Y-%m-%d'), timespan='minute', multiplier=1, Stock=stock, is_gap_fill=True)
+                        df = self.get_historical_data(ticker, gap_start.strftime('%Y-%m-%d'), gap_end.strftime('%Y-%m-%d'), timespan='minute', multiplier=1, is_gap_fill=True)
                     
                     if not df.empty:
                         rows_inserted = self.db_service.save_stock_data_to_db(ticker, df, is_hourly=is_hourly)
