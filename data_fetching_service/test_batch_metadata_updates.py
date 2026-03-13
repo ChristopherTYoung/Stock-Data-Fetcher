@@ -97,7 +97,7 @@ def test_process_stock_batch_updates_metadata_then_history(monkeypatch):
     tickers = ["AAPL", "MSFT"]
     asyncio.run(worker_scheduler.process_stock_batch(tickers))
 
-    assert calls[0] == ("metadata", tickers)
-    assert calls[1][0] == "history"
-    assert calls[1][1] == tickers
-    assert isinstance(calls[1][2], datetime)
+    assert calls[0][0] == "history"
+    assert calls[0][1] == tickers
+    assert isinstance(calls[0][2], datetime)
+    assert calls[1] == ("metadata", tickers)

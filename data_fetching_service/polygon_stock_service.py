@@ -318,13 +318,13 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                 # PEG = P/E / annual growth rate
                 if price_per_earnings_value is not None and annual_eps_growth_rate not in (None, 0):
                     try:
-                        pe_per_growth_value = int(round(float(price_per_earnings_value) / float(annual_eps_growth_rate)))
+                        pe_per_growth_value = float(price_per_earnings_value) / float(annual_eps_growth_rate)
                     except Exception:
                         pe_per_growth_value = None
 
                 defaults['annual_eps_growth_rate'] = int(round(_to_builtin_number(annual_eps_growth_rate))) if annual_eps_growth_rate is not None else None
-                defaults['price_per_earnings'] = int(round(_to_builtin_number(price_per_earnings_value))) if price_per_earnings_value is not None else None
-                defaults['pe_per_growth'] = int(round(_to_builtin_number(pe_per_growth_value))) if pe_per_growth_value is not None else None
+                defaults['price_per_earnings'] = _to_percent_hundredths(price_per_earnings_value)
+                defaults['pe_per_growth'] = _to_percent_hundredths(pe_per_growth_value)
 
                 if existing:
                     # Update only allowed columns
