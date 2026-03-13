@@ -302,7 +302,15 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                 calculated_price = StockCalculator.calculate_price(history_df, stock_for_calc)
                 calculated_high52 = StockCalculator.calculate_high52(history_df, stock_for_calc)
                 calculated_low52 = StockCalculator.calculate_low52(history_df, stock_for_calc)
-                calculated_percent_change = StockCalculator.calculate_percent_change(history_df, stock_for_calc)
+
+                stock_for_percent_change = SimpleNamespace(
+                    symbol=ticker,
+                    price=_to_builtin_number(calculated_price),
+                )
+                calculated_percent_change = StockCalculator.calculate_percent_change(
+                    history_df,
+                    stock_for_percent_change,
+                )
 
                 defaults['price'] = _to_cents(calculated_price)
                 defaults['high52'] = _to_cents(calculated_high52)
