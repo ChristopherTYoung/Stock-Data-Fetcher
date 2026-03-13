@@ -350,7 +350,9 @@ class StockCalculator:
             return None
         
         try:
-            pe_ratio = current_price / eps
+            normalized_price = float(current_price)
+            normalized_eps = float(eps)
+            pe_ratio = normalized_price / normalized_eps
             logger.debug(f"Calculated P/E for {symbol}: {pe_ratio:.2f} (price={current_price}, eps={eps})")
             return pe_ratio
         except Exception as e:

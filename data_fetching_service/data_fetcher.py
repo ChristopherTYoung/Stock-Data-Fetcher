@@ -21,10 +21,17 @@ class DataFetcher:
     def __init__(self, max_gap_fill_retries: int = 3):
         self.rate_limited = False
         self.rate_limit_reset_time = None
+        self._plan_limit_warned_timespans = set()
         self.gap_detector = GapDetector()
         self.db_service = DatabaseService()
         self.max_gap_fill_retries = max_gap_fill_retries
         self.calculated_fields = ["price", "high52", "low52", "percent_change", "price_per_earnings"]
+
+    @staticmethod
+    def _is_polygon_plan_limit_error(error: Exception) -> bool:
+        """Return True when Polygon rejects a timeframe for the current subscription plan."""
+        message = str(error)
+        return "NOT_AUTHORIZED" in message and "doesn't include this data timeframe" in message
 
     def get_historical_data(self, ticker, from_date, to_date, timespan='day', multiplier=1, Stock: Stock = None, is_gap_fill: bool = False):
         """Fetch historical data from Polygon API.
@@ -40,25 +47,38 @@ class DataFetcher:
         """
         client = RESTClient(api_key=API_KEY)
 
-        aggs = client.list_aggs(
-            ticker=ticker,
-            multiplier=multiplier,
-            timespan=timespan,
-            from_=from_date,
-            to=to_date,
-            adjusted=True,
-            sort="asc"
-        )
         data = []
-        for bar in aggs:
-            data.append({
-                'timestamp': datetime.fromtimestamp(bar.timestamp/1000),
-                'open': bar.open,
-                'high': bar.high,
-                'low': bar.low,
-                'close': bar.close,
-                'volume': bar.volume
-            })
+        try:
+            aggs = client.list_aggs(
+                ticker=ticker,
+                multiplier=multiplier,
+                timespan=timespan,
+                from_=from_date,
+                to=to_date,
+                adjusted=True,
+                sort="asc"
+            )
+            for bar in aggs:
+                data.append({
+                    'timestamp': datetime.fromtimestamp(bar.timestamp/1000),
+                    'open': bar.open,
+                    'high': bar.high,
+                    'low': bar.low,
+                    'close': bar.close,
+                    'volume': bar.volume
+                })
+        except Exception as e:
+            if self._is_polygon_plan_limit_error(e):
+                if timespan not in self._plan_limit_warned_timespans:
+                    logger.warning(
+                        "Polygon plan limit: skipping '%s' timeframe fetches. "
+                        "A higher Polygon plan is required for this data.",
+                        timespan,
+                    )
+                    self._plan_limit_warned_timespans.add(timespan)
+                logger.debug("Skipping %s fetch for %s due to Polygon plan limit", timespan, ticker)
+                return pd.DataFrame()
+            raise
 
         df = pd.DataFrame(data)
         if not df.empty and not is_gap_fill:
@@ -133,14 +153,14 @@ class DataFetcher:
                         "hourly_rows": len(hourly_df) if not hourly_df.empty else 0,
                         "minute_rows": len(minute_df) if not minute_df.empty else 0
                     }
-                    logger.info(f"✓✓✓ SUCCESS: {ticker} - {ticker_rows} total rows saved to database")
+                    logger.info(f"SUCCESS: {ticker} - {ticker_rows} total rows saved to database")
                 else:
                     results[ticker] = {
                         "success": False,
                         "error": "No data returned from Polygon"
                     }
                     failed_tickers.append(ticker)
-                    logger.error(f"✗✗✗ FAILED: {ticker} - No data fetched from Polygon")
+                    logger.error(f"FAILED: {ticker} - No data fetched from Polygon")
 
                 if idx < len(tickers):
                     time.sleep(3)

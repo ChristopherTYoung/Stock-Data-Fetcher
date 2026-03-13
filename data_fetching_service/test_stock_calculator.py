@@ -1,6 +1,7 @@
 """Comprehensive tests for StockCalculator to verify calculations aren't returning None unexpectedly."""
 import pytest
 from datetime import datetime, timedelta
+from decimal import Decimal
 import pandas as pd
 from stock_calculator import StockCalculator
 import database as dbmod
@@ -440,6 +441,14 @@ class TestCalculatePE:
         
         result = StockCalculator.calculate_pe(test_stock, price=0)
         assert result == 0.0, f"Expected P/E of 0 (0/5), got {result}"
+
+    def test_pe_with_decimal_eps(self, test_stock):
+        """P/E should support Decimal EPS values from the DB model."""
+        test_stock.price = 100.0
+        test_stock.eps = Decimal("4.00")
+
+        result = StockCalculator.calculate_pe(test_stock)
+        assert result == 25.0, f"Expected P/E of 25 (100/4), got {result}"
 
 
 if __name__ == "__main__":
