@@ -84,10 +84,9 @@ def test_update_stocks_persists_calculated_fields(monkeypatch, fake_details):
     ]
 
     current_year = datetime.now().year
-    last_year = current_year - 1
     reports = [
         _make_report(current_year, 2.0),
-        _make_report(last_year, 1.0),
+        _make_report(current_year - 1, 1.0),
     ]
 
     fake_client = _FakeClient(reports=reports, bars=bars, details=fake_details)
@@ -106,8 +105,8 @@ def test_update_stocks_persists_calculated_fields(monkeypatch, fake_details):
         assert row.low52 == 9000
         assert row.percent_change == 1000
         assert row.annual_eps_growth_rate == 100
-        assert row.price_per_earnings == 11000
-        assert row.pe_per_growth == 110
+        assert row.price_per_earnings == 5500
+        assert row.pe_per_growth == 55
 
 
 def test_update_stocks_handles_missing_growth_denominator(monkeypatch, fake_details):
@@ -119,11 +118,10 @@ def test_update_stocks_handles_missing_growth_denominator(monkeypatch, fake_deta
     ]
 
     current_year = datetime.now().year
-    last_year = current_year - 1
 
     reports = [
         _make_report(current_year, 1.0),
-        _make_report(last_year, 0.0),
+        _make_report(current_year - 1, 0.0),
     ]
 
     fake_client = _FakeClient(reports=reports, bars=bars, details=fake_details)

@@ -146,85 +146,71 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                 return getattr(dp, 'value', dp)
 
             eps_value = None
+            previous_eps_value = None
             annual_eps_growth_rate = None
             price_per_earnings_value = None
             pe_per_growth_value = None
             debt_to_equity_value = None
             try:
-                current_year = datetime.now().year
-                last_year = current_year - 1
-
-                reports = client.vx.list_stock_financials(
-                    ticker=ticker,
-                    timeframe='annual',
-                    limit=5,
+                reports = list(
+                    client.vx.list_stock_financials(
+                        ticker=ticker,
+                        limit=2,
+                    )
                 )
-                target = None
-                current_report = None
-                prior_year_report = None
-                for rpt in reports:
-                    fiscal_year = getattr(rpt, 'fiscal_year', None)
-                    if fiscal_year is not None:
-                        try:
-                            fy = int(fiscal_year)
-                            if fy == int(current_year) and current_report is None:
-                                current_report = rpt
-                            if fy == int(last_year) and prior_year_report is None:
-                                prior_year_report = rpt
-                            if target is None and fy == int(last_year):
-                                target = rpt
-                        except Exception:
-                            pass
-                    end_date_str = getattr(rpt, 'end_date', None)
+
+                def _report_sort_key(report):
+                    end_date_str = getattr(report, 'end_date', None)
                     if end_date_str:
                         try:
-                            end_dt = datetime.strptime(end_date_str[:10], '%Y-%m-%d').date()
-                            if end_dt.year == current_year and current_report is None:
-                                current_report = rpt
-                            if end_dt.year == last_year and prior_year_report is None:
-                                prior_year_report = rpt
-                            if target is None and end_dt.year == last_year:
-                                target = rpt
+                            return datetime.strptime(end_date_str[:10], '%Y-%m-%d')
                         except Exception:
                             pass
 
-                if target is None:
-                    target = next(
-                        iter(
-                            client.vx.list_stock_financials(
-                                ticker=ticker,
-                                timeframe='annual',
-                                limit=1,
-                            )
-                        ),
-                        None,
-                    )
+                    filing_date_str = getattr(report, 'filing_date', None)
+                    if filing_date_str:
+                        try:
+                            return datetime.strptime(filing_date_str[:10], '%Y-%m-%d')
+                        except Exception:
+                            pass
+
+                    fiscal_year = getattr(report, 'fiscal_year', None)
+                    if fiscal_year is not None:
+                        try:
+                            return datetime(int(fiscal_year), 12, 31)
+                        except Exception:
+                            pass
+
+                    return datetime.min
+
+                sorted_reports = sorted(reports, key=_report_sort_key, reverse=True)
+                target = sorted_reports[0] if sorted_reports else None
+                previous_report = sorted_reports[1] if len(sorted_reports) > 1 else None
+
+                def _extract_basic_eps(report):
+                    if report is None:
+                        return None
+
+                    fin = getattr(report, 'financials', None)
+                    income = getattr(fin, 'income_statement', None) if fin is not None else None
+                    basic_eps = None
+                    if income is not None:
+                        basic_eps = _dp_value(getattr(income, 'basic_earnings_per_share', None))
+                    if basic_eps is None:
+                        return None
+                    try:
+                        return Decimal(str(round(float(basic_eps), 4)))
+                    except Exception:
+                        return None
 
                 if target is not None:
+                    eps_value = _extract_basic_eps(target)
+                    previous_eps_value = _extract_basic_eps(previous_report)
+
                     fin = getattr(target, 'financials', None)
-                    income = getattr(fin, 'income_statement', None) if fin is not None else None
-                    beps = None
-                    if income is not None:
-                        beps = _dp_value(getattr(income, 'basic_earnings_per_share', None))
-                    if beps is not None:
+                    if eps_value is not None and previous_eps_value not in (None, 0):
                         try:
-                            eps_value = Decimal(str(round(float(beps), 4)))
-                        except Exception:
-                            eps_value = None
-
-                    # Annual EPS growth rate formula:
-                    if current_report is not None and prior_year_report is not None:
-                        try:
-                            current_fin = getattr(current_report, 'financials', None)
-                            prior_fin = getattr(prior_year_report, 'financials', None)
-                            current_income = getattr(current_fin, 'income_statement', None) if current_fin is not None else None
-                            prior_income = getattr(prior_fin, 'income_statement', None) if prior_fin is not None else None
-
-                            current_beps = _dp_value(getattr(current_income, 'basic_earnings_per_share', None)) if current_income is not None else None
-                            prior_beps = _dp_value(getattr(prior_income, 'basic_earnings_per_share', None)) if prior_income is not None else None
-
-                            if current_beps is not None and prior_beps not in (None, 0):
-                                annual_eps_growth_rate = ((float(current_beps) / float(prior_beps)) - 1.0) * 100.0
+                            annual_eps_growth_rate = ((float(eps_value) / float(previous_eps_value)) - 1.0) * 100.0
                         except Exception:
                             annual_eps_growth_rate = None
 
@@ -246,6 +232,7 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                                 debt_to_equity_value = None
             except Exception:
                 eps_value = None
+                previous_eps_value = None
                 annual_eps_growth_rate = None
                 price_per_earnings_value = None
                 pe_per_growth_value = None
