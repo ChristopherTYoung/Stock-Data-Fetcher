@@ -27,6 +27,7 @@ create table incrementum.stock (
     share_class_figi VARCHAR(50),
     outstanding_shares BIGINT,
     eps NUMERIC(20,6),
+    revenue_per_share NUMERIC(20,2),
     homepage_url VARCHAR(255),
     total_employees INTEGER,
     list_date DATE,
@@ -86,6 +87,7 @@ ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS composite_figi 
 ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS share_class_figi VARCHAR(50);
 ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS outstanding_shares BIGINT;
 ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS eps NUMERIC(20,6);
+ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS revenue_per_share NUMERIC(20,2);
 ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS homepage_url VARCHAR(255);
 ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS total_employees INTEGER;
 ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS list_date DATE;
@@ -96,3 +98,4 @@ ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS price INTEGER;
 ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS high52 INTEGER;
 ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS low52 INTEGER;
 ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS percent_change INTEGER;
+ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS price_per_sales NUMERIC(20,2);

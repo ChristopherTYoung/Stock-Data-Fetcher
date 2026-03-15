@@ -1,7 +1,7 @@
 import os
 import traceback
 from datetime import datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import List, Dict, Any, Optional
 from types import SimpleNamespace
 import pandas as pd
@@ -72,6 +72,14 @@ def _to_percent_hundredths(value):
     if numeric_value is None:
         return None
     return int(round(float(numeric_value) * 100))
+
+
+def _to_two_decimal_numeric(value):
+    """Convert a numeric value to Decimal rounded to two decimal places."""
+    numeric_value = _to_builtin_number(value)
+    if numeric_value is None:
+        return None
+    return Decimal(str(numeric_value)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
 def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_dict: Optional[Dict[str, int]] = None) -> int:
@@ -145,7 +153,12 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                     return None
                 return getattr(dp, 'value', dp)
 
+            outstanding_shares_value = _to_builtin_number(
+                getattr(details, 'weighted_shares_outstanding', None)
+            )
             eps_value = None
+            revenue_per_share_value = None
+            price_per_sales_value = None
             previous_eps_value = None
             annual_eps_growth_rate = None
             price_per_earnings_value = None
@@ -203,9 +216,41 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                     except Exception:
                         return None
 
+                def _extract_total_revenue(report):
+                    if report is None:
+                        return None
+
+                    fin = getattr(report, 'financials', None)
+                    income = getattr(fin, 'income_statement', None) if fin is not None else None
+                    if income is None:
+                        return None
+
+                    for field_name in ('total_revenue', 'revenues', 'sales_revenue_net'):
+                        revenue = _dp_value(getattr(income, field_name, None))
+                        if revenue is None:
+                            continue
+                        try:
+                            return Decimal(str(revenue))
+                        except Exception:
+                            return None
+
+                    return None
+
                 if target is not None:
                     eps_value = _extract_basic_eps(target)
                     previous_eps_value = _extract_basic_eps(previous_report)
+                    total_revenue_value = _extract_total_revenue(target)
+
+                    if total_revenue_value is not None and outstanding_shares_value not in (None, 0):
+                        try:
+                            shares_decimal = Decimal(str(outstanding_shares_value))
+                            if shares_decimal != 0:
+                                revenue_per_share_value = (total_revenue_value / shares_decimal).quantize(
+                                    Decimal('0.01'),
+                                    rounding=ROUND_HALF_UP,
+                                )
+                        except Exception:
+                            revenue_per_share_value = None
 
                     fin = getattr(target, 'financials', None)
                     if eps_value is not None and previous_eps_value not in (None, 0):
@@ -232,6 +277,8 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                                 debt_to_equity_value = None
             except Exception:
                 eps_value = None
+                revenue_per_share_value = None
+                price_per_sales_value = None
                 previous_eps_value = None
                 annual_eps_growth_rate = None
                 price_per_earnings_value = None
@@ -256,8 +303,9 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                 'cik': getattr(details, 'cik', None),
                 'composite_figi': getattr(details, 'composite_figi', None),
                 'share_class_figi': getattr(details, 'share_class_figi', None),
-                'outstanding_shares': getattr(details, 'weighted_shares_outstanding', None),
+                'outstanding_shares': outstanding_shares_value,
                 'eps': eps_value,
+                'revenue_per_share': revenue_per_share_value,
                 'homepage_url': getattr(details, 'homepage_url', None),
                 'total_employees': getattr(details, 'total_employees', None),
                 'list_date': list_date,
@@ -307,6 +355,16 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                 # Keep valuation calculations in dollar units even though the DB stores cents.
                 current_price = _to_builtin_number(calculated_price)
 
+                if current_price is not None and revenue_per_share_value not in (None, 0):
+                    try:
+                        revenue_per_share_decimal = Decimal(str(revenue_per_share_value))
+                        if revenue_per_share_decimal != 0:
+                            price_per_sales_value = (
+                                Decimal(str(current_price)) / revenue_per_share_decimal
+                            ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                    except Exception:
+                        price_per_sales_value = None
+
                 if current_price is not None and eps_value not in (None, 0):
                     price_per_earnings_value = StockCalculator.calculate_pe(stock_for_calc, current_price)
 
@@ -318,6 +376,8 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                         pe_per_growth_value = None
 
                 defaults['annual_eps_growth_rate'] = int(round(_to_builtin_number(annual_eps_growth_rate))) if annual_eps_growth_rate is not None else None
+                defaults['revenue_per_share'] = _to_two_decimal_numeric(revenue_per_share_value)
+                defaults['price_per_sales'] = _to_two_decimal_numeric(price_per_sales_value)
                 defaults['price_per_earnings'] = _to_percent_hundredths(price_per_earnings_value)
                 defaults['pe_per_growth'] = _to_percent_hundredths(pe_per_growth_value)
 

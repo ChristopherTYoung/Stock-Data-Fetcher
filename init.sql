@@ -33,6 +33,7 @@ create table if not exists incrementum.stock (
     share_class_figi varchar(50),
     outstanding_shares bigint,
     eps numeric(20, 6),
+    revenue_per_share numeric(20, 2),
     homepage_url varchar(255),
     total_employees integer,
     list_date timestamp,
@@ -43,6 +44,7 @@ create table if not exists incrementum.stock (
     high52 integer,
     low52 integer,
     percent_change integer,
+    price_per_sales numeric(20, 2),
     high52_updated_at timestamp,
     low52_updated_at timestamp,
     debt_to_equity numeric(20, 6)
