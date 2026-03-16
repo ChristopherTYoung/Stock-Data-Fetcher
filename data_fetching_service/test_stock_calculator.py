@@ -1,6 +1,7 @@
 """Comprehensive tests for StockCalculator to verify calculations aren't returning None unexpectedly."""
 import pytest
 from datetime import datetime, timedelta
+from decimal import Decimal
 import pandas as pd
 from stock_calculator import StockCalculator
 import database as dbmod
@@ -70,6 +71,13 @@ def one_year_dataframe():
     return df
 
 
+@pytest.fixture
+def test_stock():
+    """Create a test stock object with symbol."""
+    stock = TestStock(symbol="TEST", company_name="Test Corp", updated_at=datetime.utcnow())
+    return stock
+
+
 class TestCalculatePrice:
     """Test price calculation."""
     
@@ -93,54 +101,54 @@ class TestCalculatePrice:
 class TestCalculateHigh52:
     """Test 52-week high calculation."""
     
-    def test_high52_from_dataframe(self, one_year_dataframe):
+    def test_high52_from_dataframe(self, one_year_dataframe, test_stock):
         """Should calculate 52-week high from DataFrame."""
-        result = StockCalculator.calculate_high52(one_year_dataframe, None, "TEST")
+        result = StockCalculator.calculate_high52(one_year_dataframe, test_stock)
         assert result is not None, "High52 calculation returned None for valid DataFrame"
         expected = one_year_dataframe['high'].max()
         assert result == expected, f"Expected {expected}, got {result}"
     
-    def test_high52_empty_dataframe(self):
+    def test_high52_empty_dataframe(self, test_stock):
         """Should return None for empty DataFrame."""
-        result = StockCalculator.calculate_high52(pd.DataFrame(), None, "TEST")
+        result = StockCalculator.calculate_high52(pd.DataFrame(), test_stock)
         assert result is None, "High52 should be None for empty DataFrame"
     
-    def test_high52_none_dataframe(self):
+    def test_high52_none_dataframe(self, test_stock):
         """Should return None when DataFrame is None."""
-        result = StockCalculator.calculate_high52(None, None, "TEST")
+        result = StockCalculator.calculate_high52(None, test_stock)
         assert result is None, "High52 should be None when DataFrame is None"
     
-    def test_high52_with_symbol(self, one_year_dataframe):
-        """Should work with symbol parameter only."""
-        result = StockCalculator.calculate_high52(one_year_dataframe, None, "TEST")
-        assert result is not None, "High52 should work with symbol only"
+    def test_high52_with_stock(self, one_year_dataframe, test_stock):
+        """Should calculate with stock object containing symbol."""
+        result = StockCalculator.calculate_high52(one_year_dataframe, test_stock)
+        assert result is not None, "High52 should calculate with stock object"
 
 
 class TestCalculateLow52:
     """Test 52-week low calculation."""
     
-    def test_low52_from_dataframe(self, one_year_dataframe):
+    def test_low52_from_dataframe(self, one_year_dataframe, test_stock):
         """Should calculate 52-week low from DataFrame."""
-        result = StockCalculator.calculate_low52(one_year_dataframe, None, "TEST")
+        result = StockCalculator.calculate_low52(one_year_dataframe, test_stock)
         assert result is not None, "Low52 calculation returned None for valid DataFrame"
         expected = one_year_dataframe['low'].min()
         assert result == expected, f"Expected {expected}, got {result}"
     
-    def test_low52_empty_dataframe(self):
+    def test_low52_empty_dataframe(self, test_stock):
         """Should return None for empty DataFrame."""
-        result = StockCalculator.calculate_low52(pd.DataFrame(), None, "TEST")
+        result = StockCalculator.calculate_low52(pd.DataFrame(), test_stock)
         assert result is None, "Low52 should be None for empty DataFrame"
     
-    def test_low52_none_dataframe(self):
+    def test_low52_none_dataframe(self, test_stock):
         """Should return None when DataFrame is None."""
-        result = StockCalculator.calculate_low52(None, None, "TEST")
+        result = StockCalculator.calculate_low52(None, test_stock)
         assert result is None, "Low52 should be None when DataFrame is None"
 
 
 class TestCalculatePercentChange:
     """Test percent change calculation."""
     
-    def test_percent_change_from_dataframe(self):
+    def test_percent_change_from_dataframe(self, test_stock):
         """Should calculate percent change from yesterday to today."""
         now = datetime.utcnow().replace(hour=12, minute=0, second=0, microsecond=0)
         yesterday = now - timedelta(days=1)
@@ -154,22 +162,22 @@ class TestCalculatePercentChange:
         }
         df = pd.DataFrame(data, index=pd.DatetimeIndex([yesterday, now], name='timestamp'))
         
-        result = StockCalculator.calculate_percent_change(df, None, "TEST")
+        result = StockCalculator.calculate_percent_change(df, test_stock)
         assert result is not None, "Percent change should be calculated for multi-day data"
         expected = ((110 - 101) / 101) * 100
         assert abs(result - expected) < 0.01, f"Expected {expected}, got {result}"
     
-    def test_percent_change_empty_dataframe(self):
+    def test_percent_change_empty_dataframe(self, test_stock):
         """Should return None for empty DataFrame."""
-        result = StockCalculator.calculate_percent_change(pd.DataFrame(), None, "TEST")
+        result = StockCalculator.calculate_percent_change(pd.DataFrame(), test_stock)
         assert result is None, "Percent change should be None for empty DataFrame"
     
-    def test_percent_change_none_dataframe(self):
+    def test_percent_change_none_dataframe(self, test_stock):
         """Should return None when DataFrame is None."""
-        result = StockCalculator.calculate_percent_change(None, None, "TEST")
+        result = StockCalculator.calculate_percent_change(None, test_stock)
         assert result is None, "Percent change should be None when DataFrame is None"
     
-    def test_percent_change_zero_yesterday_close(self):
+    def test_percent_change_zero_yesterday_close(self, test_stock):
         """Should return None when yesterday's close is 0."""
         now = datetime.utcnow().replace(hour=12, minute=0, second=0, microsecond=0)
         yesterday = now - timedelta(days=1)
@@ -183,7 +191,7 @@ class TestCalculatePercentChange:
         }
         df = pd.DataFrame(data, index=pd.DatetimeIndex([yesterday, now], name='timestamp'))
         
-        result = StockCalculator.calculate_percent_change(df, None, "TEST")
+        result = StockCalculator.calculate_percent_change(df, test_stock)
         assert result is None, "Percent change should be None when yesterday's close is 0"
 
 
@@ -197,9 +205,9 @@ class TestPrepareCombinedDataFrame:
         assert isinstance(result, pd.DataFrame), "Result should be a DataFrame"
         assert not result.empty, "Combined DataFrame should not be empty"
     
-    def test_combined_dataframe_none_input(self):
+    def test_combined_dataframe_none_input(self, test_stock):
         """Should handle None input gracefully."""
-        result = StockCalculator.prepare_combined_dataframe(None, "TEST")
+        result = StockCalculator.prepare_combined_dataframe(None, test_stock)
         assert result is None or (isinstance(result, pd.DataFrame) and result.empty), \
             "Should return None or empty DataFrame for None input"
 
@@ -207,21 +215,21 @@ class TestPrepareCombinedDataFrame:
 class TestCalculationsWithRealScenarios:
     """Test realistic scenarios that might occur in production."""
     
-    def test_fresh_stock_no_data(self):
+    def test_fresh_stock_no_data(self, test_stock):
         """New stock with no historical data should return None."""
-        price = StockCalculator.calculate_price(None, None)
+        price = StockCalculator.calculate_price(None, test_stock)
         assert price is None, "Price should be None for stock with no data"
         
-        high52 = StockCalculator.calculate_high52(None, None, "NEW")
+        high52 = StockCalculator.calculate_high52(None, test_stock)
         assert high52 is None, "High52 should be None for stock with no data"
         
-        low52 = StockCalculator.calculate_low52(None, None, "NEW")
+        low52 = StockCalculator.calculate_low52(None, test_stock)
         assert low52 is None, "Low52 should be None for stock with no data"
         
-        pct = StockCalculator.calculate_percent_change(None, None, "NEW")
+        pct = StockCalculator.calculate_percent_change(None, test_stock)
         assert pct is None, "Percent change should be None for stock with no data"
     
-    def test_stock_with_only_today_data(self):
+    def test_stock_with_only_today_data(self, test_stock):
         """Stock with only today's data."""
         now = datetime.utcnow()
         data = {
@@ -233,20 +241,20 @@ class TestCalculationsWithRealScenarios:
         }
         df = pd.DataFrame(data, index=pd.DatetimeIndex([now], name='timestamp'))
         
-        price = StockCalculator.calculate_price(df, None)
+        price = StockCalculator.calculate_price(df, test_stock)
         assert price == 105, "Price should be 105"
         
-        high52 = StockCalculator.calculate_high52(df, None, None)
+        high52 = StockCalculator.calculate_high52(df, test_stock)
         assert high52 == 110, "High52 should be 110"
         
-        low52 = StockCalculator.calculate_low52(df, None, None)
+        low52 = StockCalculator.calculate_low52(df, test_stock)
         assert low52 == 95, "Low52 should be 95"
         
         # Percent change needs yesterday's data
-        pct = StockCalculator.calculate_percent_change(df, None, None)
+        pct = StockCalculator.calculate_percent_change(df, test_stock)
         assert pct is None, "Percent change should be None with single day of data"
     
-    def test_dataframe_with_missing_columns(self):
+    def test_dataframe_with_missing_columns(self, test_stock):
         """DataFrame missing required columns should handle gracefully."""
         now = datetime.utcnow()
         # Missing 'close' column
@@ -254,10 +262,10 @@ class TestCalculationsWithRealScenarios:
         df = pd.DataFrame(data, index=pd.DatetimeIndex([now], name='timestamp'))
         
         # Should return None, not raise error
-        result = StockCalculator.calculate_price(df, None)
+        result = StockCalculator.calculate_price(df, test_stock)
         assert result is None, "Price should return None for DataFrame missing close column"
     
-    def test_dataframe_with_timestamp_column(self):
+    def test_dataframe_with_timestamp_column(self, test_stock):
         """DataFrame with 'timestamp' column (not index) should be handled."""
         now = datetime.utcnow()
         data = {
@@ -270,10 +278,10 @@ class TestCalculationsWithRealScenarios:
         }
         df = pd.DataFrame(data)
         
-        price = StockCalculator.calculate_price(df, None)
+        price = StockCalculator.calculate_price(df, test_stock)
         assert price == 105, "Price should be 105 even with timestamp as column"
     
-    def test_percent_change_within_same_day(self):
+    def test_percent_change_within_same_day(self, test_stock):
         """Percent change calculation for data within the same day."""
         now = datetime.utcnow().replace(hour=12, minute=0, second=0, microsecond=0)
         morning = now.replace(hour=9, minute=30)
@@ -289,14 +297,14 @@ class TestCalculationsWithRealScenarios:
         df = pd.DataFrame(data, index=pd.DatetimeIndex([morning, afternoon], name='timestamp'))
         
         # Both are same day, so no yesterday data
-        result = StockCalculator.calculate_percent_change(df, None, "TEST")
+        result = StockCalculator.calculate_percent_change(df, test_stock)
         assert result is None, "Percent change should be None when all data is same day"
 
 
 class TestEdgeCases:
     """Test edge cases and error handling."""
     
-    def test_negative_prices(self):
+    def test_negative_prices(self, test_stock):
         """Handle negative prices gracefully (shouldn't happen but test anyway)."""
         now = datetime.utcnow()
         data = {
@@ -308,10 +316,10 @@ class TestEdgeCases:
         }
         df = pd.DataFrame(data, index=pd.DatetimeIndex([now], name='timestamp'))
         
-        price = StockCalculator.calculate_price(df, None)
+        price = StockCalculator.calculate_price(df, test_stock)
         assert price == -95, "Should return negative price as-is"
     
-    def test_nan_values(self):
+    def test_nan_values(self, test_stock):
         """Handle NaN values in DataFrame."""
         now = datetime.utcnow()
         data = {
@@ -323,11 +331,11 @@ class TestEdgeCases:
         }
         df = pd.DataFrame(data, index=pd.DatetimeIndex([now], name='timestamp'))
         
-        result = StockCalculator.calculate_price(df, None)
+        result = StockCalculator.calculate_price(df, test_stock)
         # Should handle NaN without crashing
         assert pd.isna(result) or result is None, "Should handle NaN gracefully"
     
-    def test_very_large_numbers(self):
+    def test_very_large_numbers(self, test_stock):
         """Handle very large numbers."""
         now = datetime.utcnow()
         data = {
@@ -339,8 +347,108 @@ class TestEdgeCases:
         }
         df = pd.DataFrame(data, index=pd.DatetimeIndex([now], name='timestamp'))
         
-        price = StockCalculator.calculate_price(df, None)
+        price = StockCalculator.calculate_price(df, test_stock)
         assert price == 1050000, "Should handle large numbers correctly"
+
+
+class TestCalculatePE:
+    """Test P/E ratio calculation."""
+    
+    def test_pe_with_valid_values(self, test_stock):
+        """Calculate P/E with valid price and EPS."""
+        test_stock.price = 100
+        test_stock.eps = 5
+        
+        result = StockCalculator.calculate_pe(test_stock)
+        assert result is not None, "P/E should be calculated for valid stock"
+        assert result == 20.0, f"Expected P/E of 20, got {result}"
+    
+    def test_pe_with_price_parameter(self, test_stock):
+        """P/E should use price parameter if provided."""
+        test_stock.price = 100
+        test_stock.eps = 4
+        
+        result = StockCalculator.calculate_pe(test_stock, price=200)
+        assert result is not None, "P/E should be calculated with price parameter"
+        assert result == 50.0, f"Expected P/E of 50 (200/4), got {result}"
+    
+    def test_pe_prefers_parameter_over_stock_price(self, test_stock):
+        """Price parameter should take precedence over stock.price."""
+        test_stock.price = 50
+        test_stock.eps = 2
+        
+        result = StockCalculator.calculate_pe(test_stock, price=100)
+        assert result == 50.0, f"Expected P/E of 50 (100/2), got {result}"
+    
+    def test_pe_no_stock(self):
+        """Should return None when no stock object provided."""
+        result = StockCalculator.calculate_pe(None)
+        assert result is None, "P/E should be None for None stock"
+    
+    def test_pe_missing_price(self, test_stock):
+        """Should return None when price is not available."""
+        test_stock.price = None
+        test_stock.eps = 5
+        
+        result = StockCalculator.calculate_pe(test_stock)
+        assert result is None, "P/E should be None when price is missing"
+    
+    def test_pe_missing_eps(self, test_stock):
+        """Should return None when EPS is not available."""
+        test_stock.price = 100
+        test_stock.eps = None
+        
+        result = StockCalculator.calculate_pe(test_stock)
+        assert result is None, "P/E should be None when EPS is missing"
+    
+    def test_pe_zero_eps(self, test_stock):
+        """Should return None when EPS is zero (division by zero)."""
+        test_stock.price = 100
+        test_stock.eps = 0
+        
+        result = StockCalculator.calculate_pe(test_stock)
+        assert result is None, "P/E should be None when EPS is zero"
+    
+    def test_pe_fractional_values(self, test_stock):
+        """Calculate P/E with fractional price and EPS."""
+        test_stock.price = 150.50
+        test_stock.eps = 2.75
+        
+        result = StockCalculator.calculate_pe(test_stock)
+        assert result is not None, "P/E should be calculated with fractional values"
+        expected = 150.50 / 2.75
+        assert abs(result - expected) < 0.01, f"Expected P/E of {expected:.2f}, got {result:.2f}"
+    
+    def test_pe_high_pe_ratio(self, test_stock):
+        """Handle high P/E ratios."""
+        test_stock.price = 500
+        test_stock.eps = 0.5
+        
+        result = StockCalculator.calculate_pe(test_stock)
+        assert result == 1000.0, f"Expected P/E of 1000, got {result}"
+    
+    def test_pe_low_pe_ratio(self, test_stock):
+        """Handle low P/E ratios."""
+        test_stock.price = 10
+        test_stock.eps = 5
+        
+        result = StockCalculator.calculate_pe(test_stock)
+        assert result == 2.0, f"Expected P/E of 2, got {result}"
+    
+    def test_pe_zero_price_with_parameter(self, test_stock):
+        """Handle zero price parameter."""
+        test_stock.eps = 5
+        
+        result = StockCalculator.calculate_pe(test_stock, price=0)
+        assert result == 0.0, f"Expected P/E of 0 (0/5), got {result}"
+
+    def test_pe_with_decimal_eps(self, test_stock):
+        """P/E should support Decimal EPS values from the DB model."""
+        test_stock.price = 100.0
+        test_stock.eps = Decimal("4.00")
+
+        result = StockCalculator.calculate_pe(test_stock)
+        assert result == 25.0, f"Expected P/E of 25 (100/4), got {result}"
 
 
 if __name__ == "__main__":

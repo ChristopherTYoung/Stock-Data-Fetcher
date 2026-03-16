@@ -8,7 +8,6 @@ from polygon import RESTClient
 from database import get_db, Stock, StockHistory
 from gap_detector import GapDetector
 from database_service import DatabaseService
-from stock_calculator import StockCalculator
 from sqlalchemy import select
 import os
 
@@ -22,72 +21,17 @@ class DataFetcher:
     def __init__(self, max_gap_fill_retries: int = 3):
         self.rate_limited = False
         self.rate_limit_reset_time = None
+        self._plan_limit_warned_timespans = set()
         self.gap_detector = GapDetector()
         self.db_service = DatabaseService()
         self.max_gap_fill_retries = max_gap_fill_retries
-        self.calculated_fields = ["price", "high52", "low52", "percent_change"]
-    def update_stock_calcuated_fields(self, stock: Stock, db_data, history_data) -> Dict[str, Any]:
-        """Update calculated fields for a stock in the database.
+        self.calculated_fields = ["price", "high52", "low52", "percent_change", "price_per_earnings", "revenue_per_share", "price_per_sales"]
 
-        Behavior:
-        - Always prefer history_data if available, as it's the most recent data
-        - Fall back to DB data only if history_data is not provided or is empty
-        
-        Returns:
-            Dictionary of calculated fields. Updates the DB directly if stock object is provided.
-        """
-        # Check if we have valid history_data to use
-        has_history = isinstance(history_data, pd.DataFrame) and not history_data.empty
-        
-        update_dict = {}
-        for field in self.calculated_fields:
-            # Always prefer history_data when available, since it's fresher
-            # Only use DB fallback when history_data is None/empty
-            prefer_history = has_history
-            update_dict[field] = self.calculate(field, stock, db_data, update_dict, history_data, prefer_history=prefer_history)
-
-        # If a Stock instance with a symbol was provided, perform a single DB update.
-        if stock is not None and getattr(stock, 'symbol', None):
-            self.db_service.update_stock(stock.symbol, update_dict)
-
-        # Return the computed dict so callers can use it during initialization
-        return update_dict
-    
-    def calculate(self, field: str, stock: Stock, db_data, update_dict, history_data=None, prefer_history: bool = False) -> Any:
-        """Calculate the value for a specific field based on stock history data and DB.
-
-        Dispatches to StockCalculator static methods:
-        - calculate_price(): Always prefers latest close from history_data if available.
-        - calculate_high52(): Combines history_data with DB rows from past year.
-        - calculate_low52(): Combines history_data with DB rows from past year.
-        - calculate_percent_change(): Combines history_data with DB rows from past year.
-        """
-        symbol = getattr(stock, 'symbol', None) if stock else None
-        
-        if prefer_history and history_data is not None:
-            try:
-                if field == 'price':
-                    return StockCalculator.calculate_price(history_data, stock)
-                elif field == 'high52':
-                    return StockCalculator.calculate_high52(history_data, stock, symbol)
-                elif field == 'low52':
-                    return StockCalculator.calculate_low52(history_data, stock, symbol)
-                elif field == 'percent_change':
-                    return StockCalculator.calculate_percent_change(history_data, stock, symbol)
-            except Exception as e:
-                logger.warning(f"Failed to calculate {field} from history_data, falling back to DB: {e}")
-        
-        # Fallback: calculate from DB only
-        if field == 'price':
-            return StockCalculator.calculate_price(None, stock)
-        elif field == 'high52':
-            return StockCalculator.calculate_high52(None, stock, symbol)
-        elif field == 'low52':
-            return StockCalculator.calculate_low52(None, stock, symbol)
-        elif field == 'percent_change':
-            return StockCalculator.calculate_percent_change(None, stock, symbol)
-        
-        return None
+    @staticmethod
+    def _is_polygon_plan_limit_error(error: Exception) -> bool:
+        """Return True when Polygon rejects a timeframe for the current subscription plan."""
+        message = str(error)
+        return "NOT_AUTHORIZED" in message and "doesn't include this data timeframe" in message
 
     def get_historical_data(self, ticker, from_date, to_date, timespan='day', multiplier=1, Stock: Stock = None, is_gap_fill: bool = False):
         """Fetch historical data from Polygon API.
@@ -103,44 +47,44 @@ class DataFetcher:
         """
         client = RESTClient(api_key=API_KEY)
 
-        aggs = client.list_aggs(
-            ticker=ticker,
-            multiplier=multiplier,
-            timespan=timespan,
-            from_=from_date,
-            to=to_date,
-            adjusted=True,
-            sort="asc"
-        )
         data = []
-        for bar in aggs:
-            data.append({
-                'timestamp': datetime.fromtimestamp(bar.timestamp/1000),
-                'open': bar.open,
-                'high': bar.high,
-                'low': bar.low,
-                'close': bar.close,
-                'volume': bar.volume
-            })
+        try:
+            aggs = client.list_aggs(
+                ticker=ticker,
+                multiplier=multiplier,
+                timespan=timespan,
+                from_=from_date,
+                to=to_date,
+                adjusted=True,
+                sort="asc"
+            )
+            for bar in aggs:
+                data.append({
+                    'timestamp': datetime.fromtimestamp(bar.timestamp/1000),
+                    'open': bar.open,
+                    'high': bar.high,
+                    'low': bar.low,
+                    'close': bar.close,
+                    'volume': bar.volume
+                })
+        except Exception as e:
+            if self._is_polygon_plan_limit_error(e):
+                if timespan not in self._plan_limit_warned_timespans:
+                    logger.warning(
+                        "Polygon plan limit: skipping '%s' timeframe fetches. "
+                        "A higher Polygon plan is required for this data.",
+                        timespan,
+                    )
+                    self._plan_limit_warned_timespans.add(timespan)
+                logger.debug("Skipping %s fetch for %s due to Polygon plan limit", timespan, ticker)
+                return pd.DataFrame()
+            raise
 
         df = pd.DataFrame(data)
         if not df.empty and not is_gap_fill:
-            # Only update calculated fields when NOT gap filling
-            # Gap fills are historical data that hasn't been saved to DB yet,
-            # so prepare_combined_dataframe can't access it and calculations fail
-            # Calculated fields should reflect CURRENT stock state, not historical gaps
-            logger.debug(f"Updating calculated fields for {ticker} from {timespan} data")
-            result = self.update_stock_calcuated_fields(Stock, aggs, df)
-            # Only update DB if Stock was None (initialization case)
-            # If Stock is provided, update_stock_calcuated_fields already did the update
-            if result and Stock is None:
-                try:
-                    self.db_service.update_stock(ticker, result)
-                    logger.info(f"Updated stock record for {ticker}: {result}")
-                except Exception as e:
-                    logger.warning(f"Could not update stock record for {ticker}: {e}")
+            logger.debug(f"Fetched data for {ticker} from {timespan} data")
         elif df.empty and not is_gap_fill:
-            logger.debug(f"No data fetched for {ticker}, skipping calculated field updates")
+            logger.debug(f"No data fetched for {ticker}")
         elif is_gap_fill:
             logger.debug(f"Gap fill mode: skipping calculated field updates for {ticker} (data will be in DB soon)")
         
@@ -172,27 +116,29 @@ class DataFetcher:
         
         for idx, ticker in enumerate(tickers, 1):
             try:
-                stock = None
+                stock_updated_at = None
                 with get_db() as db:
-                    stock = db.execute(select(Stock).where(Stock.symbol == ticker)).first()
+                    stock = db.execute(select(Stock).where(Stock.symbol == ticker)).scalars().first()
+                    if stock is not None:
+                        stock_updated_at = stock.updated_at
                 logger.info(f"Processing {ticker} ({idx}/{len(tickers)})")
                 ticker_rows = 0
                 start_date = end_date - timedelta(days=730)
-                if(stock is not None and stock.updated_at is not None):
-                    start_date = stock.updated_at
+                if stock_updated_at is not None:
+                    start_date = stock_updated_at
                 
                 logger.info(f"  Fetching 2 years of hourly data for {ticker}...")
-                hourly_df = self.get_historical_data(ticker, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), timespan='hour', multiplier=1, Stock=stock)
+                hourly_df = self.get_historical_data(ticker, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), timespan='hour', multiplier=1)
                 if not hourly_df.empty:
                     rows = self.db_service.save_stock_data_to_db(ticker, hourly_df, is_hourly=True)
                     ticker_rows += rows
                     logger.info(f"  Saved {rows} hourly rows for {ticker}")
                 minute_start_date = end_date - timedelta(days=28)
-                if(stock is not None and stock.updated_at is not None):
-                    minute_start_date = stock.updated_at
+                if stock_updated_at is not None:
+                    minute_start_date = stock_updated_at
 
                 logger.info(f"  Fetching 1 month of minute data for {ticker}...")
-                minute_df = self.get_historical_data(ticker, minute_start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), timespan='minute', multiplier=1, Stock=stock)
+                minute_df = self.get_historical_data(ticker, minute_start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), timespan='minute', multiplier=1)
                 if not minute_df.empty:
                     rows = self.db_service.save_stock_data_to_db(ticker, minute_df, is_hourly=False)
                     ticker_rows += rows
@@ -207,14 +153,14 @@ class DataFetcher:
                         "hourly_rows": len(hourly_df) if not hourly_df.empty else 0,
                         "minute_rows": len(minute_df) if not minute_df.empty else 0
                     }
-                    logger.info(f"✓✓✓ SUCCESS: {ticker} - {ticker_rows} total rows saved to database")
+                    logger.info(f"SUCCESS: {ticker} - {ticker_rows} total rows saved to database")
                 else:
                     results[ticker] = {
                         "success": False,
                         "error": "No data returned from Polygon"
                     }
                     failed_tickers.append(ticker)
-                    logger.error(f"✗✗✗ FAILED: {ticker} - No data fetched from Polygon")
+                    logger.error(f"FAILED: {ticker} - No data fetched from Polygon")
 
                 if idx < len(tickers):
                     time.sleep(3)
@@ -270,11 +216,6 @@ class DataFetcher:
         blacklisted_gaps = []
         total_rows_inserted = 0
         
-        # Fetch stock once for gap filling
-        stock = None
-        with get_db() as db:
-            stock = db.execute(select(Stock).where(Stock.symbol == ticker)).first()
-        
         for gap_start, gap_end, is_hourly in gaps:
             retry_count = 0
             gap_filled = False
@@ -285,9 +226,9 @@ class DataFetcher:
                     logger.info(f"Filling gap for {ticker}: {gap_start} to {gap_end} (hourly={is_hourly}){retry_msg}")
                     
                     if is_hourly:
-                        df = self.get_historical_data(ticker, gap_start.strftime('%Y-%m-%d'), gap_end.strftime('%Y-%m-%d'), timespan='hour', multiplier=1, Stock=stock, is_gap_fill=True)
+                        df = self.get_historical_data(ticker, gap_start.strftime('%Y-%m-%d'), gap_end.strftime('%Y-%m-%d'), timespan='hour', multiplier=1, is_gap_fill=True)
                     else:
-                        df = self.get_historical_data(ticker, gap_start.strftime('%Y-%m-%d'), gap_end.strftime('%Y-%m-%d'), timespan='minute', multiplier=1, Stock=stock, is_gap_fill=True)
+                        df = self.get_historical_data(ticker, gap_start.strftime('%Y-%m-%d'), gap_end.strftime('%Y-%m-%d'), timespan='minute', multiplier=1, is_gap_fill=True)
                     
                     if not df.empty:
                         rows_inserted = self.db_service.save_stock_data_to_db(ticker, df, is_hourly=is_hourly)
