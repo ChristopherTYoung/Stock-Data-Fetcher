@@ -10,9 +10,14 @@ import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.preprocessing import MinMaxScaler
 from sqlalchemy import create_engine, text
-from tensorflow.keras import Sequential
-from tensorflow.keras.layers import Conv1D, Dense, Flatten
-from tensorflow.keras.optimizers import Adam
+from keras import Sequential
+from keras.layers import Conv1D, Dense, Flatten
+from keras.optimizers import Adam
+
+
+def mean_absolute_percentage_error(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    """Calculate MAPE (Mean Absolute Percentage Error)."""
+    return np.mean(np.abs((y_true - y_pred) / y_true)) * 100
 
 
 def load_env_file(env_path: str = ".env") -> None:
@@ -69,6 +74,15 @@ def fetch_prices(symbol: str, period: str, interval: str) -> pd.DataFrame:
     raise NotImplementedError("Use fetch_prices_from_db for database-backed data loading.")
 
 
+def fetch_available_stocks(database_url: str) -> List[str]:
+    """Fetch all unique stock symbols from the database."""
+    query = text("SELECT DISTINCT stock_symbol FROM incrementum.stock_history ORDER BY stock_symbol")
+    engine = create_engine(database_url)
+    with engine.connect() as connection:
+        result = pd.read_sql(query, connection)
+    return result["stock_symbol"].tolist()
+
+
 def fetch_prices_from_db(symbol: str, database_url: str, interval: str) -> pd.DataFrame:
     interval_lower = interval.lower()
     if interval_lower not in {"1h", "1d", "1hour", "1day", "hourly", "daily"}:
@@ -81,7 +95,7 @@ def fetch_prices_from_db(symbol: str, database_url: str, interval: str) -> pd.Da
             day_and_time AS timestamp,
             close_price / 100.0 AS close
         FROM incrementum.stock_history
-        WHERE stock_symbol = :symbol
+        WHERE stock_symbol = :symbolpy
           AND is_hourly = :is_hourly
         ORDER BY day_and_time ASC
         """
@@ -89,7 +103,7 @@ def fetch_prices_from_db(symbol: str, database_url: str, interval: str) -> pd.Da
 
     engine = create_engine(database_url)
     with engine.connect() as connection:
-        df = pd.read_sql(query, connection, params={"symbol": symbol.upper(), "is_hourly": is_hourly})
+        df = pd.read_sql(query, connection, params={"symbolpy": symbol.upper(), "is_hourly": is_hourly})
 
     if df.empty:
         frequency = "hourly" if is_hourly else "daily"
@@ -238,7 +252,7 @@ def forecast_next_month(
     return pd.DataFrame({"timestamp": future_ts, "pred_close": future_values})
 
 
-def plot_results(df: pd.DataFrame, fold_results: List[FoldResult], next_month_df: pd.DataFrame) -> None:
+def plot_results(df: pd.DataFrame, fold_results: List[FoldResult], next_month_df: pd.DataFrame, name: str = None) -> None:
     plt.figure(figsize=(14, 7))
 
     plt.plot(df["timestamp"], df["close"], label="Actual close", color="black", linewidth=1.2)
@@ -256,21 +270,22 @@ def plot_results(df: pd.DataFrame, fold_results: List[FoldResult], next_month_df
             linewidth=1.8,
             label="Next-month forecast",
         )
-
+    filename = name if name else "predictions"
     plt.title("1D CNN Walk-Forward Validation + Next-Month Forecast")
     plt.xlabel("Time")
     plt.ylabel("Close Price")
     plt.legend()
     plt.grid(alpha=0.25)
     plt.tight_layout()
-    plt.savefig("predictions.png")
+    plt.savefig(f"{filename}.png")
+    plt.show()
 
 
 def main() -> None:
     load_env_file()
 
     parser = argparse.ArgumentParser(description="1D CNN walk-forward monthly validation on DB stock data.")
-    parser.add_argument("symbol", help="Ticker symbol, e.g. AAPL")
+    parser.add_argument("symbol", nargs="?", default=None, help="Ticker symbol, e.g. AAPL (optional; if omitted, trains all stocks)")
     parser.add_argument("--interval", default="1h", help="DB frequency: 1h or 1d (default: 1h)")
     parser.add_argument(
         "--database-url",
@@ -281,38 +296,124 @@ def main() -> None:
     parser.add_argument("--epochs", type=int, default=20, help="Epochs per fold")
     parser.add_argument("--batch-size", type=int, default=32, help="Training batch size")
     parser.add_argument("--verbose", type=int, default=0, help="Keras verbosity")
+    parser.add_argument("--batch-stocks", type=int, default=30, help="Number of stocks to process at once (default: 30)")
     args = parser.parse_args()
 
-    symbol = args.symbol.strip().upper()
     database_url = resolve_database_url(args.database_url)
-    df = fetch_prices_from_db(symbol, database_url, args.interval)
-    fold_results = walk_forward_monthly(
-        df=df,
-        lookback=args.lookback,
-        epochs=args.epochs,
-        batch_size=args.batch_size,
-        verbose=args.verbose,
-    )
+    
+    # If no symbol provided, train one model on all stocks in batches
+    if args.symbol is None:
+        print("Fetching all available stocks...")
+        symbols = fetch_available_stocks(database_url)
+        print(f"Found {len(symbols)} stocks. Processing in batches of {args.batch_stocks}...")
+        
+        for i in range(0, len(symbols), args.batch_stocks):
+            batch = symbols[i:i + args.batch_stocks]
+            batch_num = i // args.batch_stocks + 1
+            batch_name = f"batch_{batch_num}_{'-'.join(batch[:3])}"  # e.g., "batch_1_AAPL-MSFT-GOOGL"
+            print(f"\n=== Processing batch {batch_num} ({len(batch)} stocks) ===")
+            
+            # Fetch data for all stocks in batch
+            batch_data = {}
+            scalers = {}
+            for symbol in batch:
+                try:
+                    df = fetch_prices_from_db(symbol, database_url, args.interval)
+                    batch_data[symbol] = df
+                    scalers[symbol] = MinMaxScaler()
+                    scalers[symbol].fit(df[["close"]].values)
+                except Exception as e:
+                    print(f"  {symbol}: Error fetching data - {str(e)}")
+            
+            if not batch_data:
+                print("  No valid data in this batch. Skipping.")
+                continue
+            
+            print(f"  Successfully loaded {len(batch_data)} stocks. Training single model on combined data...")
+            
+            # Combine all training data
+            all_close_scaled = []
+            for symbol in batch_data:
+                scaled = scalers[symbol].transform(batch_data[symbol][["close"]].values).flatten()
+                all_close_scaled.extend(scaled)
+            
+            all_close_scaled = np.array(all_close_scaled)
+            x_train, y_train = make_sequences(all_close_scaled, args.lookback)
+            
+            if len(x_train) == 0:
+                print("  Not enough data to create sequences. Skipping batch.")
+                continue
+            
+            # Train single model on all combined data
+            print(f"  Training model on {len(x_train)} sequences...")
+            model = build_cnn_model(args.lookback)
+            model.fit(x_train, y_train, epochs=args.epochs, batch_size=args.batch_size, verbose=args.verbose)
+            
+            # Save the model
+            model_path = f"{batch_name}_model.keras"
+            model.save(model_path)
+            print(f"  Model saved to {model_path}")
+            
+            # Evaluate on each stock separately
+            print(f"  Evaluating on individual stocks...")
+            batch_mapes = []
+            
+            for symbol in batch_data:
+                try:
+                    df = batch_data[symbol]
+                    scaled = scalers[symbol].transform(df[["close"]].values).flatten()
+                    
+                    # Walk-forward style evaluation
+                    lookback_data = scaled[:args.lookback].tolist()
+                    y_true = df["close"].values
+                    y_pred_list = []
+                    
+                    for actual in y_true:
+                        x_input = np.array(lookback_data[-args.lookback:]).reshape(1, args.lookback, 1)
+                        pred_scaled = float(model.predict(x_input, verbose=0).flatten()[0])
+                        y_pred_list.append(pred_scaled)
+                        lookback_data.append(pred_scaled)
+                    
+                    y_pred = scalers[symbol].inverse_transform(np.array(y_pred_list).reshape(-1, 1)).flatten()
+                    
+                    mape = mean_absolute_percentage_error(y_true, y_pred)
+                    batch_mapes.append(mape)
+                    print(f"    {symbol}: MAPE={mape:.2f}%")
+                    
+                except Exception as e:
+                    print(f"    {symbol}: Error evaluating - {str(e)}")
+            
+            if batch_mapes:
+                print(f"  Batch Average MAPE: {np.mean(batch_mapes):.2f}%")
+    else:
+        # Original single-stock mode
+        symbol = args.symbol.strip().upper()
+        df = fetch_prices_from_db(symbol, database_url, args.interval)
+        fold_results = walk_forward_monthly(
+            df=df,
+            lookback=args.lookback,
+            epochs=args.epochs,
+            batch_size=args.batch_size,
+            verbose=args.verbose,
+        )
 
-    if not fold_results:
-        raise ValueError("No valid folds were produced. Try a smaller lookback or more data.")
+        if not fold_results:
+            raise ValueError("No valid folds were produced. Try a smaller lookback or more data.")
 
-    all_true = np.concatenate([fold.y_true for fold in fold_results])
-    all_pred = np.concatenate([fold.y_pred for fold in fold_results])
-    overall_mae = mean_absolute_error(all_true, all_pred)
-    overall_rmse = np.sqrt(mean_squared_error(all_true, all_pred))
-    print(f"Overall MAE: {overall_mae:.4f}")
-    print(f"Overall RMSE: {overall_rmse:.4f}")
+        all_true = np.concatenate([fold.y_true for fold in fold_results])
+        all_pred = np.concatenate([fold.y_pred for fold in fold_results])
+        overall_mape = mean_absolute_percentage_error(all_true, all_pred)
+        print(f"Overall MAPE: {overall_mape:.2f}%")
 
-    next_month_df = forecast_next_month(
-        df=df,
-        lookback=args.lookback,
-        epochs=args.epochs,
-        batch_size=args.batch_size,
-        verbose=args.verbose,
-    )
+        next_month_df = forecast_next_month(
+            df=df,
+            lookback=args.lookback,
+            epochs=args.epochs,
+            batch_size=args.batch_size,
+            verbose=args.verbose,
+        )
 
-    plot_results(df, fold_results, next_month_df)
+        plot_results(df, fold_results, next_month_df)
 
 
 if __name__ == "__main__":
