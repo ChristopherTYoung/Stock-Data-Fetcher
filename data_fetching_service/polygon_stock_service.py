@@ -177,6 +177,8 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
             price_per_earnings_value = None
             pe_per_growth_value = None
             debt_to_equity_value = None
+            target = None
+            previous_report = None
             try:
                 reports = list(
                     client.vx.list_stock_financials(
