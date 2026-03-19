@@ -1,5 +1,6 @@
 import os
 import traceback
+import logging
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from typing import List, Dict, Any, Optional
@@ -11,6 +12,18 @@ from polygon import RESTClient
 from database import get_db, Stock
 from sqlalchemy import select
 from stock_calculator import StockCalculator
+
+logger = logging.getLogger(__name__)
+
+
+def _report_identity(report) -> str:
+    if report is None:
+        return "none"
+
+    fiscal_year = getattr(report, 'fiscal_year', None)
+    end_date = getattr(report, 'end_date', None)
+    filing_date = getattr(report, 'filing_date', None)
+    return f"fiscal_year={fiscal_year}, end_date={end_date}, filing_date={filing_date}"
 
 
 def fetch_new_stocks_from_polygon() -> List[Dict[str, str]]:
@@ -200,6 +213,13 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                 target = sorted_reports[0] if sorted_reports else None
                 previous_report = sorted_reports[1] if len(sorted_reports) > 1 else None
 
+                logger.info(
+                    "[%s] financial reports selected: current={%s}, previous={%s}",
+                    ticker,
+                    _report_identity(target),
+                    _report_identity(previous_report),
+                )
+
                 def _extract_basic_eps(report):
                     if report is None:
                         return None
@@ -241,6 +261,17 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                     previous_eps_value = _extract_basic_eps(previous_report)
                     total_revenue_value = _extract_total_revenue(target)
 
+                    logger.info(
+                        "[%s] extracted financial inputs: eps=%s from {%s}, previous_eps=%s from {%s}, total_revenue=%s from {%s}",
+                        ticker,
+                        eps_value,
+                        _report_identity(target),
+                        previous_eps_value,
+                        _report_identity(previous_report),
+                        total_revenue_value,
+                        _report_identity(target),
+                    )
+
                     if total_revenue_value is not None and outstanding_shares_value not in (None, 0):
                         try:
                             shares_decimal = Decimal(str(outstanding_shares_value))
@@ -249,15 +280,48 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                                     Decimal('0.01'),
                                     rounding=ROUND_HALF_UP,
                                 )
+                                logger.info(
+                                    "[%s] calculated revenue_per_share=%s using total_revenue=%s from {%s} and outstanding_shares=%s",
+                                    ticker,
+                                    revenue_per_share_value,
+                                    total_revenue_value,
+                                    _report_identity(target),
+                                    outstanding_shares_value,
+                                )
                         except Exception:
                             revenue_per_share_value = None
+                            logger.warning("[%s] failed calculating revenue_per_share", ticker, exc_info=True)
+                    else:
+                        logger.info(
+                            "[%s] skipped revenue_per_share calculation: total_revenue=%s, outstanding_shares=%s",
+                            ticker,
+                            total_revenue_value,
+                            outstanding_shares_value,
+                        )
 
                     fin = getattr(target, 'financials', None)
                     if eps_value is not None and previous_eps_value not in (None, 0):
                         try:
                             annual_eps_growth_rate = ((float(eps_value) / float(previous_eps_value)) - 1.0) * 100.0
+                            logger.info(
+                                "[%s] calculated annual_eps_growth_rate=%s using eps=%s from {%s} and previous_eps=%s from {%s}",
+                                ticker,
+                                annual_eps_growth_rate,
+                                eps_value,
+                                _report_identity(target),
+                                previous_eps_value,
+                                _report_identity(previous_report),
+                            )
                         except Exception:
                             annual_eps_growth_rate = None
+                            logger.warning("[%s] failed calculating annual_eps_growth_rate", ticker, exc_info=True)
+                    else:
+                        logger.info(
+                            "[%s] skipped annual_eps_growth_rate calculation: eps=%s, previous_eps=%s",
+                            ticker,
+                            eps_value,
+                            previous_eps_value,
+                        )
 
                     balance_sheet = getattr(fin, 'balance_sheet', None) if fin is not None else None
                     if balance_sheet is not None:
@@ -273,8 +337,22 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                                 equity_f = float(equity)
                                 if equity_f != 0:
                                     debt_to_equity_value = Decimal(str(round(float(debt) / equity_f, 4)))
+                                    logger.info(
+                                        "[%s] calculated debt_to_equity=%s from {%s}",
+                                        ticker,
+                                        debt_to_equity_value,
+                                        _report_identity(target),
+                                    )
                             except Exception:
                                 debt_to_equity_value = None
+                                logger.warning("[%s] failed calculating debt_to_equity", ticker, exc_info=True)
+                        else:
+                            logger.info(
+                                "[%s] skipped debt_to_equity calculation: debt=%s, equity=%s",
+                                ticker,
+                                debt,
+                                equity,
+                            )
             except Exception:
                 eps_value = None
                 revenue_per_share_value = None
@@ -338,6 +416,14 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                 calculated_high52 = StockCalculator.calculate_high52(history_df, stock_for_calc)
                 calculated_low52 = StockCalculator.calculate_low52(history_df, stock_for_calc)
 
+                logger.info(
+                    "[%s] market calculations: price=%s, high52=%s, low52=%s",
+                    ticker,
+                    calculated_price,
+                    calculated_high52,
+                    calculated_low52,
+                )
+
                 stock_for_percent_change = SimpleNamespace(
                     symbol=ticker,
                     price=_to_builtin_number(calculated_price),
@@ -346,6 +432,7 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                     history_df,
                     stock_for_percent_change,
                 )
+                logger.info("[%s] calculated percent_change=%s", ticker, calculated_percent_change)
 
                 defaults['price'] = _to_cents(calculated_price)
                 defaults['high52'] = _to_cents(calculated_high52)
@@ -362,18 +449,64 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
                             price_per_sales_value = (
                                 Decimal(str(current_price)) / revenue_per_share_decimal
                             ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                            logger.info(
+                                "[%s] calculated price_per_sales=%s using price=%s and revenue_per_share=%s (revenue from {%s})",
+                                ticker,
+                                price_per_sales_value,
+                                current_price,
+                                revenue_per_share_value,
+                                _report_identity(target),
+                            )
                     except Exception:
                         price_per_sales_value = None
+                        logger.warning("[%s] failed calculating price_per_sales", ticker, exc_info=True)
+                else:
+                    logger.info(
+                        "[%s] skipped price_per_sales calculation: price=%s, revenue_per_share=%s",
+                        ticker,
+                        current_price,
+                        revenue_per_share_value,
+                    )
 
                 if current_price is not None and eps_value not in (None, 0):
                     price_per_earnings_value = StockCalculator.calculate_pe(stock_for_calc, current_price)
+                    logger.info(
+                        "[%s] calculated price_per_earnings=%s using price=%s and eps=%s from {%s}",
+                        ticker,
+                        price_per_earnings_value,
+                        current_price,
+                        eps_value,
+                        _report_identity(target),
+                    )
+                else:
+                    logger.info(
+                        "[%s] skipped price_per_earnings calculation: price=%s, eps=%s",
+                        ticker,
+                        current_price,
+                        eps_value,
+                    )
 
                 # PEG = P/E / annual growth rate
                 if price_per_earnings_value is not None and annual_eps_growth_rate not in (None, 0):
                     try:
                         pe_per_growth_value = float(price_per_earnings_value) / float(annual_eps_growth_rate)
+                        logger.info(
+                            "[%s] calculated pe_per_growth=%s using pe=%s and annual_eps_growth_rate=%s",
+                            ticker,
+                            pe_per_growth_value,
+                            price_per_earnings_value,
+                            annual_eps_growth_rate,
+                        )
                     except Exception:
                         pe_per_growth_value = None
+                        logger.warning("[%s] failed calculating pe_per_growth", ticker, exc_info=True)
+                else:
+                    logger.info(
+                        "[%s] skipped pe_per_growth calculation: pe=%s, annual_eps_growth_rate=%s",
+                        ticker,
+                        price_per_earnings_value,
+                        annual_eps_growth_rate,
+                    )
 
                 defaults['annual_eps_growth_rate'] = int(round(_to_builtin_number(annual_eps_growth_rate))) if annual_eps_growth_rate is not None else None
                 defaults['revenue_per_share'] = _to_two_decimal_numeric(revenue_per_share_value)
