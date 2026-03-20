@@ -25,6 +25,11 @@ class StockQueueService:
         self.gap_detection_queue: List[str] = []
         self.gap_detection_processed: List[str] = []
         self.gap_detection_lock = threading.Lock()
+
+        # Stock calculation queue state
+        self.stock_calculation_queue: List[str] = []
+        self.stock_calculation_processed: List[str] = []
+        self.stock_calculation_lock = threading.Lock()
         
         self.last_refresh_time: Optional[datetime] = None
     
@@ -37,10 +42,14 @@ class StockQueueService:
         with self.gap_detection_lock:
             self.gap_detection_queue = tickers.copy()
             self.gap_detection_processed = []
+
+        with self.stock_calculation_lock:
+            self.stock_calculation_queue = tickers.copy()
+            self.stock_calculation_processed = []
         
         self.last_refresh_time = datetime.now()
         
-        logger.info(f"Both queues refreshed with {len(tickers)} tickers")
+        logger.info(f"All queues refreshed with {len(tickers)} tickers")
     
     def get_batch(self, worker_id: Optional[str] = None) -> StockBatchResponse:
         """Get batch of stocks for history updates."""
@@ -105,6 +114,38 @@ class StockQueueService:
                 total_processed=len(self.gap_detection_processed),
                 timestamp=datetime.now().isoformat()
             )
+
+    def get_stock_calculation_batch(self, worker_id: Optional[str] = None) -> StockBatchResponse:
+        """Get batch of stocks for stock-data calculation workers."""
+        with self.stock_calculation_lock:
+            if not self.stock_calculation_queue:
+                logger.info(f"No stocks remaining in stock calculation queue (Worker: {worker_id})")
+                return StockBatchResponse(
+                    tickers=[],
+                    batch_size=0,
+                    remaining_in_queue=0,
+                    total_processed=len(self.stock_calculation_processed),
+                    timestamp=datetime.now().isoformat()
+                )
+
+            batch_size = min(self.stocks_per_request, len(self.stock_calculation_queue))
+            batch = self.stock_calculation_queue[:batch_size]
+
+            self.stock_calculation_queue[:batch_size] = []
+            self.stock_calculation_processed.extend(batch)
+
+            logger.info(
+                f"[STOCK CALCULATION] Allocated {len(batch)} stocks to worker {worker_id or 'unknown'}. "
+                f"Remaining: {len(self.stock_calculation_queue)}, Processed: {len(self.stock_calculation_processed)}"
+            )
+
+            return StockBatchResponse(
+                tickers=batch,
+                batch_size=len(batch),
+                remaining_in_queue=len(self.stock_calculation_queue),
+                total_processed=len(self.stock_calculation_processed),
+                timestamp=datetime.now().isoformat()
+            )
     
     def get_status(self) -> OrchestratorStatus:
         """Get current status of queues."""
@@ -115,6 +156,10 @@ class StockQueueService:
         with self.gap_detection_lock:
             gap_remaining = len(self.gap_detection_queue)
             gap_total_processed = len(self.gap_detection_processed)
+
+        with self.stock_calculation_lock:
+            stock_calculation_remaining = len(self.stock_calculation_queue)
+            stock_calculation_total_processed = len(self.stock_calculation_processed)
         
         next_refresh = None
         if self.last_refresh_time:
@@ -132,6 +177,10 @@ class StockQueueService:
                 "remaining": gap_remaining,
                 "processed": gap_total_processed
             },
+            stock_calculation={
+                "remaining": stock_calculation_remaining,
+                "processed": stock_calculation_total_processed
+            },
             last_refresh=self.last_refresh_time.isoformat() if self.last_refresh_time else None,
             next_refresh=next_refresh
         )
@@ -145,13 +194,23 @@ class StockQueueService:
         with self.gap_detection_lock:
             self.gap_detection_queue.extend(self.gap_detection_processed)
             self.gap_detection_processed.clear()
+
+        with self.stock_calculation_lock:
+            self.stock_calculation_queue.extend(self.stock_calculation_processed)
+            self.stock_calculation_processed.clear()
         
-        logger.info(f"Queues reset. History: {len(self.history_queue)}, Gap detection: {len(self.gap_detection_queue)}")
+        logger.info(
+            "Queues reset. History: %s, Gap detection: %s, Stock calculation: %s",
+            len(self.history_queue),
+            len(self.gap_detection_queue),
+            len(self.stock_calculation_queue),
+        )
         
         return {
             "success": True,
-            "message": "Both queues reset successfully",
+            "message": "All queues reset successfully",
             "history_queue": len(self.history_queue),
             "gap_detection_queue": len(self.gap_detection_queue),
+            "stock_calculation_queue": len(self.stock_calculation_queue),
             "timestamp": datetime.now().isoformat()
         }

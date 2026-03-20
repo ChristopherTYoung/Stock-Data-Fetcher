@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime, timedelta
 import pandas as pd
-from stock_calculator import StockCalculator
+from stock_data_calculator.stock_calculator import StockCalculator
 
 # Configure logging to see detailed output
 logging.basicConfig(

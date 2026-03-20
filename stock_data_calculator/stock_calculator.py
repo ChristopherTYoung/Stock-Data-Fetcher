@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from typing import Any, Optional
 import pandas as pd
 import logging
-from database import get_db, StockHistory, Stock
+from stock_data_calculator.database import get_db, StockHistory, Stock
 from logging_config import setup_logging
 
 logger = setup_logging("stock-data-fetcher", level=logging.INFO)

@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-import polygon_stock_service
-from database import Stock, get_db
+from stock_data_calculator import polygon_stock_service
+from stock_data_calculator.database import Stock, get_db
 
 
 def _to_ms(dt: datetime) -> int:

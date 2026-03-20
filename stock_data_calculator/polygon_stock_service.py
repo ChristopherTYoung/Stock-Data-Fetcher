@@ -9,9 +9,9 @@ import pandas as pd
 
 from polygon import RESTClient
 
-from database import get_db, Stock
+from stock_data_calculator.database import get_db, Stock
 from sqlalchemy import select
-from stock_calculator import StockCalculator
+from stock_data_calculator.stock_calculator import StockCalculator
 
 logger = logging.getLogger(__name__)
 
