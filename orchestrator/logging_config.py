@@ -4,6 +4,7 @@ Centralized logging configuration for structured JSON logging with Loki support.
 import logging
 import sys
 import json
+import os
 from datetime import datetime
 from typing import Any, Dict
 
@@ -92,10 +93,7 @@ def setup_logging(
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
     
-    # Add stdout handler
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(level)
-    
+    # Determine which formatter to use
     if use_json:
         formatter = JSONFormatter()
     else:
@@ -103,7 +101,25 @@ def setup_logging(
             "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
     
+    # Add stdout handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(level)
     console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)
+    
+    # Add file handler for Promtail to pick up
+    log_dir = "/var/log/app"
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+        file_handler = logging.FileHandler(f"{log_dir}/{name}.log")
+        file_handler.setLevel(level)
+        file_handler.setFormatter(formatter)
+        root_logger.addHandler(file_handler)
+    except (OSError, IOError) as e:
+        # If we can't write to /var/log/app, just log to stdout
+        console_handler.handleError(logging.makeLogRecord({
+            "msg": f"Failed to set up file logging: {e}",
+            "levelno": logging.WARNING
+        }))
     
     return logging.getLogger(name)
