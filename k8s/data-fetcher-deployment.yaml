@@ -77,3 +77,30 @@ spec:
           limits:
             memory: "1Gi"
             cpu: "1000m"
+        volumeMounts:
+        - name: log-volume
+          mountPath: /var/log/app
+      
+      - name: promtail
+        image: grafana/promtail:latest
+        args:
+          - "-config.file=/etc/promtail/promtail-config.yaml"
+        volumeMounts:
+        - name: promtail-config
+          mountPath: /etc/promtail
+        - name: log-volume
+          mountPath: /var/log/app
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+      
+      volumes:
+      - name: log-volume
+        emptyDir: {}
+      - name: promtail-config
+        configMap:
+          name: promtail-sidecar-config

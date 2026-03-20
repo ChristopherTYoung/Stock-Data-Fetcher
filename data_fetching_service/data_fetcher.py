@@ -10,8 +10,9 @@ from gap_detector import GapDetector
 from database_service import DatabaseService
 from sqlalchemy import select
 import os
+from logging_config import setup_logging
 
-logger = logging.getLogger(__name__)
+logger = setup_logging("stock-data-fetcher", level=logging.INFO)
 API_KEY = os.environ.get('POLYGON_API_KEY')
 
 
@@ -44,6 +45,7 @@ class DataFetcher:
             Stock: Stock object (if available)
             is_gap_fill: If True, skip calculated field updates (gap fills shouldn't update current metrics)
         """
+        
         client = RESTClient(api_key=API_KEY)
 
         data = []
@@ -115,6 +117,7 @@ class DataFetcher:
         
         for idx, ticker in enumerate(tickers, 1):
             try:
+                ## start timer
                 stock_updated_at = None
                 with get_db() as db:
                     stock = db.execute(select(Stock).where(Stock.symbol == ticker)).scalars().first()
@@ -132,6 +135,7 @@ class DataFetcher:
                     rows = self.db_service.save_stock_data_to_db(ticker, hourly_df, is_hourly=True)
                     ticker_rows += rows
                     logger.info(f"  Saved {rows} hourly rows for {ticker}")
+                ## end timer and log time taken for hourly fetch and save
                 minute_start_date = end_date - timedelta(days=28)
                 if stock_updated_at is not None:
                     minute_start_date = stock_updated_at

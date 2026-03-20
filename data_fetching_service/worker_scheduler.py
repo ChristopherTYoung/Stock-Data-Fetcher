@@ -14,9 +14,9 @@ from apscheduler.triggers.cron import CronTrigger
 # Import the DataFetcher class and database cleanup
 from data_fetcher import DataFetcher
 from database import close_db_connections
+from logging_config import setup_logging
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = setup_logging("stock-data-fetcher", level=logging.INFO)
 
 ORCHESTRATOR_URL = os.getenv("ORCHESTRATOR_URL", "http://localhost:8080")
 WORKER_ID = os.getenv("WORKER_ID", "worker-1")

@@ -3,8 +3,9 @@ from typing import List
 import logging
 import os
 from polygon import RESTClient
+from logging_config import setup_logging
 
-logger = logging.getLogger(__name__)
+logger = setup_logging("stock-orchestrator", level=logging.INFO)
 
 
 class PolygonService:

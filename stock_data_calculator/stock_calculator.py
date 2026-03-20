@@ -4,8 +4,9 @@ from typing import Any, Optional
 import pandas as pd
 import logging
 from stock_data_calculator.database import get_db, StockHistory, Stock
+from logging_config import setup_logging
 
-logger = logging.getLogger(__name__)
+logger = setup_logging("stock-data-fetcher", level=logging.INFO)
 
 
 class StockCalculator:

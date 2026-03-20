@@ -8,9 +8,9 @@ from apscheduler.triggers.cron import CronTrigger
 from models import StockBatchResponse, OrchestratorStatus
 from polygon_service import PolygonService
 from stock_queue_service import StockQueueService
+from logging_config import setup_logging
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = setup_logging("stock-orchestrator", level=logging.INFO)
 
 app = FastAPI(title="Stock Orchestrator", version="1.0.0")
 
