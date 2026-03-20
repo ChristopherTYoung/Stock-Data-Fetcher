@@ -36,6 +36,13 @@ jobs:
           push: true
           tags: christophertyoung/stock-orchestrator:latest
 
+      - name: Build and push stock-data-calculator
+        uses: docker/build-push-action@v5
+        with:
+          context: ./stock_data_calculator
+          push: true
+          tags: christophertyoung/stock-data-calculator:latest
+
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
         with:
@@ -48,11 +55,13 @@ jobs:
         run: |
           kubectl rollout restart deployment data-fetcher -n stock-data-fetchers
           kubectl rollout restart deployment orchestrator -n stock-data-fetchers
+          kubectl rollout restart deployment stock-data-calculator -n stock-data-fetchers
 
       - name: Wait for rollouts
         run: |
           kubectl rollout status deployment data-fetcher -n stock-data-fetchers
           kubectl rollout status deployment orchestrator -n stock-data-fetchers
+          kubectl rollout status deployment stock-data-calculator -n stock-data-fetchers
 
       - name: Show pod status
         run: kubectl get pods -n stock-data-fetchers

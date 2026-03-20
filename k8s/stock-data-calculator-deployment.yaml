@@ -1,36 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: data-fetcher
+  name: stock-data-calculator
   namespace: stock-data-fetchers
   labels:
-    app: data-fetcher
+    app: stock-data-calculator
 spec:
   replicas: 10
   selector:
     matchLabels:
-      app: data-fetcher
+      app: stock-data-calculator
   template:
     metadata:
       labels:
-        app: data-fetcher
+        app: stock-data-calculator
     spec:
-      # Spread pods across different nodes (one per node)
-      affinity:
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 100
-            podAffinityTerm:
-              labelSelector:
-                matchExpressions:
-                - key: app
-                  operator: In
-                  values:
-                  - data-fetcher
-              topologyKey: kubernetes.io/hostname
       containers:
-      - name: data-fetcher
-        image: christophertyoung/stock-data-fetcher:latest
+      - name: stock-data-calculator
+        image: christophertyoung/stock-data-calculator:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8000
@@ -52,10 +39,6 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
-        command:
-        - /bin/sh
-        - -c
-        - python main.py & python worker_scheduler.py
         livenessProbe:
           httpGet:
             path: /health
@@ -80,7 +63,7 @@ spec:
         volumeMounts:
         - name: log-volume
           mountPath: /var/log/app
-      
+
       - name: promtail
         image: grafana/promtail:latest
         args:
@@ -97,7 +80,7 @@ spec:
           limits:
             memory: "128Mi"
             cpu: "100m"
-      
+
       volumes:
       - name: log-volume
         emptyDir: {}

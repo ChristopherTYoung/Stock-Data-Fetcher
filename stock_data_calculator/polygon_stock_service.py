@@ -1,5 +1,4 @@
 import os
-import traceback
 import logging
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
@@ -10,10 +9,11 @@ import pandas as pd
 from polygon import RESTClient
 
 from stock_data_calculator.database import get_db, Stock
+from stock_data_calculator.logging_config import setup_logging
 from sqlalchemy import select
 from stock_data_calculator.stock_calculator import StockCalculator
 
-logger = logging.getLogger(__name__)
+logger = setup_logging("stock-data-calculator", level=logging.INFO)
 
 
 def _report_identity(report) -> str:
@@ -29,7 +29,7 @@ def _report_identity(report) -> str:
 def fetch_new_stocks_from_polygon() -> List[Dict[str, str]]:
     api_key = os.environ.get('POLYGON_API_KEY')
     if not api_key or api_key.strip() == '':
-        print('ERROR: POLYGON_API_KEY not set in environment')
+        logger.error('POLYGON_API_KEY not set in environment')
         return []
 
     try:
@@ -42,12 +42,11 @@ def fetch_new_stocks_from_polygon() -> List[Dict[str, str]]:
                 'name': getattr(ticker, 'name', ticker.ticker),
             })
 
-        print(f"Fetched {len(tickers)} tickers from Polygon")
+        logger.info("Fetched %s tickers from Polygon", len(tickers))
         return tickers
 
     except Exception as e:
-        print(f"ERROR fetching tickers from Polygon: {e}")
-        traceback.print_exc()
+        logger.exception("Error fetching tickers from Polygon: %s", e)
         return []
 
 
@@ -98,15 +97,15 @@ def _to_two_decimal_numeric(value):
 def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_dict: Optional[Dict[str, int]] = None) -> int:
     api_key = os.environ.get('POLYGON_API_KEY')
     if not api_key:
-        print('ERROR: POLYGON_API_KEY not set, cannot fetch metadata')
+        logger.error('POLYGON_API_KEY not set, cannot fetch metadata')
         return 0
 
     if not stock_data:
-        print('ERROR: No stock data provided')
+        logger.error('No stock data provided')
         return 0
 
-    print(f"Starting to fetch metadata for {len(stock_data)} stocks...")
-    print("This will take a while...")
+    logger.info("Starting to fetch metadata for %s stocks", len(stock_data))
+    logger.info("Metadata fetch started")
 
     if status_dict:
         status_dict['total'] = len(stock_data)
@@ -532,21 +531,21 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
         except Exception as e:
             error_count += 1
             if error_count <= 10:
-                print(f"Error fetching {ticker}: {e}")
+                logger.error("Error fetching %s: %s", ticker, e)
 
         if (idx + 1) % 100 == 0:
             progress_msg = (
                 f"Processed {idx + 1}/{len(stock_data)} stocks... "
                 f"(Saved: {saved_count}, Errors: {error_count})"
             )
-            print(progress_msg)
+            logger.info(progress_msg)
             if status_dict:
                 status_dict['progress'] = idx + 1
                 status_dict['saved'] = saved_count
                 status_dict['errors'] = error_count
 
-    print(f"COMPLETE: Saved {saved_count} stocks to database")
-    print(f"Errors: {error_count}")
+    logger.info("COMPLETE: Saved %s stocks to database", saved_count)
+    logger.info("Errors: %s", error_count)
 
     if status_dict:
         status_dict['progress'] = len(stock_data)
@@ -559,7 +558,7 @@ def update_stocks_in_db_from_polygon(stock_data: List[Dict[str, Any]], status_di
 def fetch_and_update_symbols() -> int:
     data = fetch_new_stocks_from_polygon()
     if not data:
-        print("ERROR: No data fetched from Polygon")
+        logger.error("No data fetched from Polygon")
         return 0
 
     saved = update_stocks_in_db_from_polygon(data)

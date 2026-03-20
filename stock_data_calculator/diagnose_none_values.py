@@ -3,43 +3,40 @@
 import logging
 from datetime import datetime, timedelta
 import pandas as pd
+from stock_data_calculator.logging_config import setup_logging
 from stock_data_calculator.stock_calculator import StockCalculator
 
-# Configure logging to see detailed output
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(name)s - %(levelname)s - %(message)s'
-)
+logger = setup_logging("stock-data-calculator", level=logging.DEBUG, use_json=False)
 
 def test_none_dataframe_scenario():
     """Test when history_data is None - simulates potential gap filling issue."""
-    print("\n" + "="*80)
-    print("TEST 1: Calculations with None history_data (no Polygon data)")
-    print("="*80)
+    logger.info("\n%s", "=" * 80)
+    logger.info("TEST 1: Calculations with None history_data (no Polygon data)")
+    logger.info("%s", "=" * 80)
     
     result = StockCalculator.calculate_price(None, None)
-    print(f"Result: {result}")
-    print(f"Expected: None (correct behavior when no data available)")
+    logger.info("Result: %s", result)
+    logger.info("Expected: None (correct behavior when no data available)")
     
 
 def test_empty_dataframe_scenario():
     """Test when history_data is empty DataFrame - another potential issue."""
-    print("\n" + "="*80)
-    print("TEST 2: Calculations with empty DataFrame")
-    print("="*80)
+    logger.info("\n%s", "=" * 80)
+    logger.info("TEST 2: Calculations with empty DataFrame")
+    logger.info("%s", "=" * 80)
     
     empty_df = pd.DataFrame()
     
     result = StockCalculator.calculate_price(empty_df, None)
-    print(f"Result: {result}")
-    print(f"Expected: None (correct behavior for empty data)")
+    logger.info("Result: %s", result)
+    logger.info("Expected: None (correct behavior for empty data)")
     
 
 def test_valid_dataframe_scenario():
     """Test with valid data - should work."""
-    print("\n" + "="*80)
-    print("TEST 3: Calculations with valid DataFrame (SHOULD WORK)")
-    print("="*80)
+    logger.info("\n%s", "=" * 80)
+    logger.info("TEST 3: Calculations with valid DataFrame (SHOULD WORK)")
+    logger.info("%s", "=" * 80)
     
     now = datetime.utcnow().replace(hour=12, minute=0, second=0, microsecond=0)
     data = {
@@ -56,15 +53,15 @@ def test_valid_dataframe_scenario():
     ], name='timestamp'))
     
     price = StockCalculator.calculate_price(df, None)
-    print(f"Result: {price}")
-    print(f"Expected: 111 (last close price)")
+    logger.info("Result: %s", price)
+    logger.info("Expected: 111 (last close price)")
     
 
 def test_dataframe_without_index():
     """Test DataFrame without proper index - might cause None."""
-    print("\n" + "="*80)
-    print("TEST 4: DataFrame without proper timestamp index")
-    print("="*80)
+    logger.info("\n%s", "=" * 80)
+    logger.info("TEST 4: DataFrame without proper timestamp index")
+    logger.info("%s", "=" * 80)
     
     # DataFrame with 'timestamp' column instead of index
     now = datetime.utcnow().replace(hour=12, minute=0, second=0, microsecond=0)
@@ -77,11 +74,11 @@ def test_dataframe_without_index():
         'volume': [1000, 1100]
     })
     
-    print(f"DataFrame structure:\n{df}")
+    logger.info("DataFrame structure:\n%s", df)
     
     price = StockCalculator.calculate_price(df, None)
-    print(f"Result: {price}")
-    print(f"Expected: 106 (last close price)")
+    logger.info("Result: %s", price)
+    logger.info("Expected: 106 (last close price)")
 
 
 if __name__ == "__main__":
@@ -90,11 +87,11 @@ if __name__ == "__main__":
     test_valid_dataframe_scenario()
     test_dataframe_without_index()
     
-    print("\n" + "="*80)
-    print("SUMMARY")
-    print("="*80)
-    print("If TEST 3 works but TEST 4 returns None, the issue is likely that:")
-    print("- history_data is being passed with 'timestamp' as a column, not an index")
-    print("- OR history_data is None or empty when gap filling occurs")
-    print("\nCheck the Polygon API response format in get_historical_data()")
-    print("="*80 + "\n")
+    logger.info("\n%s", "=" * 80)
+    logger.info("SUMMARY")
+    logger.info("%s", "=" * 80)
+    logger.info("If TEST 3 works but TEST 4 returns None, the issue is likely that:")
+    logger.info("- history_data is being passed with 'timestamp' as a column, not an index")
+    logger.info("- OR history_data is None or empty when gap filling occurs")
+    logger.info("\nCheck the Polygon API response format in get_historical_data()")
+    logger.info("%s\n", "=" * 80)

@@ -7,8 +7,9 @@ import os
 from sqlalchemy import Boolean, BigInteger, Column, DateTime, Integer, Numeric, String, Text, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from stock_data_calculator.logging_config import setup_logging
 
-logger = logging.getLogger(__name__)
+logger = setup_logging("stock-data-calculator", level=logging.INFO)
 
 # Database URL from environment variable
 DATABASE_URL = os.getenv(

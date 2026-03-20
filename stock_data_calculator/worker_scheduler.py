@@ -11,10 +11,10 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from stock_data_calculator.database import close_db_connections
+from stock_data_calculator.logging_config import setup_logging
 from stock_data_calculator.polygon_stock_service import update_metadata_for_tickers
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = setup_logging("stock-data-calculator", level=logging.INFO)
 
 ORCHESTRATOR_URL = os.getenv("ORCHESTRATOR_URL", "http://localhost:8080")
 WORKER_ID = os.getenv("WORKER_ID", "stock-calculator-worker-1")

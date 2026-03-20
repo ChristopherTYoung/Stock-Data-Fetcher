@@ -2,9 +2,10 @@ from fastapi import FastAPI
 import logging
 
 from stock_data_calculator.worker_scheduler import scheduler, schedule_calculation_task
+from stock_data_calculator.logging_config import setup_logging
 
 app = FastAPI()
-logger = logging.getLogger(__name__)
+logger = setup_logging("stock-data-calculator", level=logging.INFO)
 
 @app.get("/")
 def read_root():

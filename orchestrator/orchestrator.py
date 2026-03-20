@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from typing import Optional
 import logging
+import os
 from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -15,7 +16,8 @@ logger = setup_logging("stock-orchestrator", level=logging.INFO)
 app = FastAPI(title="Stock Orchestrator", version="1.0.0")
 
 polygon_service = PolygonService()
-queue_service = StockQueueService(stocks_per_request=1000, refresh_interval_hours=24)
+stocks_per_request = int(os.getenv("STOCKS_PER_REQUEST", "250"))
+queue_service = StockQueueService(stocks_per_request=stocks_per_request, refresh_interval_hours=24)
 scheduler = AsyncIOScheduler()
 
 
