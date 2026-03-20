@@ -25,7 +25,6 @@ class DataFetcher:
         self.gap_detector = GapDetector()
         self.db_service = DatabaseService()
         self.max_gap_fill_retries = max_gap_fill_retries
-        self.calculated_fields = ["price", "high52", "low52", "percent_change", "price_per_earnings", "revenue_per_share", "price_per_sales"]
 
     @staticmethod
     def _is_polygon_plan_limit_error(error: Exception) -> bool:

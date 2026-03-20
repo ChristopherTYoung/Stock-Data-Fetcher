@@ -53,7 +53,8 @@ async def startup_event():
         status = queue_service.get_status()
         logger.info(f"Stock Orchestrator started successfully")
         logger.info(f"History queue: {status.history_updates['remaining']} stocks | "
-                   f"Gap detection queue: {status.gap_detection['remaining']} stocks")
+                   f"Gap detection queue: {status.gap_detection['remaining']} stocks | "
+                   f"Stock calculation queue: {status.stock_calculation['remaining']} stocks")
         logger.info("Scheduled hourly refresh at minute 0 of every hour (UTC)")
         
     except Exception as e:
@@ -102,6 +103,12 @@ async def get_gap_detection_batch(worker_id: Optional[str] = None):
     return queue_service.get_gap_detection_batch(worker_id)
 
 
+@app.post("/get-stock-calculation-batch", response_model=StockBatchResponse)
+async def get_stock_calculation_batch(worker_id: Optional[str] = None):
+    """Get batch of stocks for stock data calculation workers."""
+    return queue_service.get_stock_calculation_batch(worker_id)
+
+
 @app.post("/refresh")
 async def force_refresh():
     """
@@ -115,9 +122,10 @@ async def force_refresh():
         
         return {
             "success": True,
-            "message": "Both queues refreshed successfully",
+            "message": "All queues refreshed successfully",
             "history_queue": status.history_updates['remaining'],
             "gap_detection_queue": status.gap_detection['remaining'],
+            "stock_calculation_queue": status.stock_calculation['remaining'],
             "timestamp": datetime.now().isoformat()
         }
         

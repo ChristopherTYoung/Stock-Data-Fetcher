@@ -88,8 +88,8 @@ class TestPolygonStockServiceDebtToEquity:
     def _run_update(self, mock_client, ticker="AAPL"):
         """Drive update_stocks_in_db_from_polygon with a mocked Polygon client
         and a mocked database, returning the kwargs passed to the DB update."""
-        with patch("polygon_stock_service.RESTClient", return_value=mock_client), \
-             patch("polygon_stock_service.get_db") as mock_get_db, \
+        with patch("stock_data_calculator.polygon_stock_service.RESTClient", return_value=mock_client), \
+            patch("stock_data_calculator.polygon_stock_service.get_db") as mock_get_db, \
              patch.dict("os.environ", {"POLYGON_API_KEY": "test_key"}):
 
             # Minimal ticker details
@@ -118,7 +118,7 @@ class TestPolygonStockServiceDebtToEquity:
             mock_db.__exit__ = MagicMock(return_value=False)
             mock_get_db.return_value = mock_db
 
-            from polygon_stock_service import update_stocks_in_db_from_polygon
+            from stock_data_calculator.polygon_stock_service import update_stocks_in_db_from_polygon
             update_stocks_in_db_from_polygon([{"symbol": ticker}])
 
             # Capture what was passed to db.execute for the UPDATE
@@ -163,8 +163,8 @@ class TestPolygonStockServiceDebtToEquity:
         mock_client.vx.list_stock_financials.return_value = iter([report])
 
         # Should not raise
-        with patch("polygon_stock_service.RESTClient", return_value=mock_client), \
-             patch("polygon_stock_service.get_db") as mock_get_db, \
+        with patch("stock_data_calculator.polygon_stock_service.RESTClient", return_value=mock_client), \
+            patch("stock_data_calculator.polygon_stock_service.get_db") as mock_get_db, \
              patch.dict("os.environ", {"POLYGON_API_KEY": "test_key"}):
 
             details = MagicMock()
@@ -181,7 +181,7 @@ class TestPolygonStockServiceDebtToEquity:
             mock_db.__exit__ = MagicMock(return_value=False)
             mock_get_db.return_value = mock_db
 
-            from polygon_stock_service import update_stocks_in_db_from_polygon
+            from stock_data_calculator.polygon_stock_service import update_stocks_in_db_from_polygon
             result = update_stocks_in_db_from_polygon([{"symbol": "TEST"}])
             assert result == 1  # saved_count incremented, no exception
 
@@ -200,8 +200,8 @@ class TestPolygonStockServiceDebtToEquity:
         report.financials = financials
         mock_client.vx.list_stock_financials.return_value = iter([report])
 
-        with patch("polygon_stock_service.RESTClient", return_value=mock_client), \
-             patch("polygon_stock_service.get_db") as mock_get_db, \
+        with patch("stock_data_calculator.polygon_stock_service.RESTClient", return_value=mock_client), \
+            patch("stock_data_calculator.polygon_stock_service.get_db") as mock_get_db, \
              patch.dict("os.environ", {"POLYGON_API_KEY": "test_key"}):
 
             details = MagicMock()
@@ -218,6 +218,6 @@ class TestPolygonStockServiceDebtToEquity:
             mock_db.__exit__ = MagicMock(return_value=False)
             mock_get_db.return_value = mock_db
 
-            from polygon_stock_service import update_stocks_in_db_from_polygon
+            from stock_data_calculator.polygon_stock_service import update_stocks_in_db_from_polygon
             result = update_stocks_in_db_from_polygon([{"symbol": "TEST2"}])
             assert result == 1

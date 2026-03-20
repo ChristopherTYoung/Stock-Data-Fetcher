@@ -3,8 +3,8 @@ import pytest
 from datetime import datetime, timedelta
 from decimal import Decimal
 import pandas as pd
-from stock_calculator import StockCalculator
-import database as dbmod
+from stock_data_calculator.stock_calculator import StockCalculator
+import stock_data_calculator.database as dbmod
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from contextlib import contextmanager
