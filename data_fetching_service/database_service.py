@@ -6,8 +6,9 @@ import logging
 from polygon import RESTClient
 from database import get_db, StockHistory, Stock, Blacklist
 from sqlalchemy import select, delete
+from logging_config import setup_logging
 
-logger = logging.getLogger(__name__)
+logger = setup_logging("stock-data-fetcher", level=logging.INFO)
 
 
 class DatabaseService:

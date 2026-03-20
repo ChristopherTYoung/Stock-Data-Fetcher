@@ -42,6 +42,11 @@ services:
       FINNHUB_TOKEN: ${FINNHUB_TOKEN}
       POLYGON_API_KEY: ${POLYGON_API_KEY}
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Stock Data Fetcher Service (Worker 1)
   data-fetcher-1:
@@ -64,6 +69,54 @@ services:
       orchestrator:
         condition: service_started
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Loki - Log aggregation backend
+  loki:
+    image: grafana/loki:latest
+    container_name: stock-loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki-config.yaml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+
+  # Promtail - Log collector for Docker
+  promtail:
+    image: grafana/promtail:latest
+    container_name: stock-promtail
+    volumes:
+      - ./promtail-config.yaml:/etc/promtail/config.yaml
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: -config.file=/etc/promtail/config.yaml
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  # Grafana - Visualization and querying
+  grafana:
+    image: grafana/grafana:latest
+    container_name: stock-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana-provisioning/datasources:/etc/grafana/provisioning/datasources
+    depends_on:
+      - loki
+    restart: unless-stopped
 
 volumes:
   postgres_data:
+  loki_data:
+  grafana_data:

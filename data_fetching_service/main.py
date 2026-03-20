@@ -18,9 +18,9 @@ from stock_service import (
     StockHistoryResponse
 )
 from updateendpoint import update_stock_data
+from logging_config import setup_logging
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = setup_logging("stock-data-fetcher", level=logging.INFO)
 
 app = FastAPI(title="Stock Data Fetcher", version="1.0.0")
 data_fetcher = DataFetcher()
