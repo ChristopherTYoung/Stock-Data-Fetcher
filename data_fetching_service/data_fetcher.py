@@ -117,7 +117,8 @@ class DataFetcher:
         
         for idx, ticker in enumerate(tickers, 1):
             try:
-                ## start timer
+                # Start timer for overall ticker processing
+                ticker_start_time = time.time()
                 stock_updated_at = None
                 with get_db() as db:
                     stock = db.execute(select(Stock).where(Stock.symbol == ticker)).scalars().first()
@@ -129,41 +130,56 @@ class DataFetcher:
                 if stock_updated_at is not None:
                     start_date = stock_updated_at
                 
+                # Fetch and time hourly data
                 logger.info(f"  Fetching 2 years of hourly data for {ticker}...")
+                hourly_start_time = time.time()
                 hourly_df = self.get_historical_data(ticker, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), timespan='hour', multiplier=1)
+                hourly_fetch_time = time.time() - hourly_start_time
+                
                 if not hourly_df.empty:
                     rows = self.db_service.save_stock_data_to_db(ticker, hourly_df, is_hourly=True)
                     ticker_rows += rows
-                    logger.info(f"  Saved {rows} hourly rows for {ticker}")
-                ## end timer and log time taken for hourly fetch and save
+                    logger.info(f"  Saved {rows} hourly rows for {ticker} (fetch: {hourly_fetch_time:.2f}s)")
+                else:
+                    logger.info(f"  No hourly data fetched for {ticker} (fetch: {hourly_fetch_time:.2f}s)")
+                
                 minute_start_date = end_date - timedelta(days=28)
                 if stock_updated_at is not None:
                     minute_start_date = stock_updated_at
 
+                # Fetch and time minute data
                 logger.info(f"  Fetching 1 month of minute data for {ticker}...")
+                minute_start_time = time.time()
                 minute_df = self.get_historical_data(ticker, minute_start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), timespan='minute', multiplier=1)
+                minute_fetch_time = time.time() - minute_start_time
+                
                 if not minute_df.empty:
                     rows = self.db_service.save_stock_data_to_db(ticker, minute_df, is_hourly=False)
                     ticker_rows += rows
-                    logger.info(f"  Saved {rows} minute rows for {ticker}")
+                    logger.info(f"  Saved {rows} minute rows for {ticker} (fetch: {minute_fetch_time:.2f}s)")
+                else:
+                    logger.info(f"  No minute data fetched for {ticker} (fetch: {minute_fetch_time:.2f}s)")
                 
                 total_rows_inserted += ticker_rows
+                total_ticker_time = time.time() - ticker_start_time
                 
                 if ticker_rows > 0:
                     results[ticker] = {
                         "success": True,
                         "rows_inserted": ticker_rows,
                         "hourly_rows": len(hourly_df) if not hourly_df.empty else 0,
-                        "minute_rows": len(minute_df) if not minute_df.empty else 0
+                        "minute_rows": len(minute_df) if not minute_df.empty else 0,
+                        "fetch_time_seconds": total_ticker_time
                     }
-                    logger.info(f"SUCCESS: {ticker} - {ticker_rows} total rows saved to database")
+                    logger.info(f"SUCCESS: {ticker} - {ticker_rows} total rows saved (total time: {total_ticker_time:.2f}s)")
                 else:
                     results[ticker] = {
                         "success": False,
-                        "error": "No data returned from Polygon"
+                        "error": "No data returned from Polygon",
+                        "fetch_time_seconds": total_ticker_time
                     }
                     failed_tickers.append(ticker)
-                    logger.error(f"FAILED: {ticker} - No data fetched from Polygon")
+                    logger.error(f"FAILED: {ticker} - No data fetched from Polygon (time: {total_ticker_time:.2f}s)")
 
                 if idx < len(tickers):
                     time.sleep(3)
@@ -222,28 +238,34 @@ class DataFetcher:
         for gap_start, gap_end, is_hourly in gaps:
             retry_count = 0
             gap_filled = False
+            gap_start_time = time.time()
             
             while retry_count < max_retries and not gap_filled:
                 try:
                     retry_msg = f" (retry {retry_count + 1}/{max_retries})" if retry_count > 0 else ""
                     logger.info(f"Filling gap for {ticker}: {gap_start} to {gap_end} (hourly={is_hourly}){retry_msg}")
                     
+                    gap_fetch_start = time.time()
                     if is_hourly:
                         df = self.get_historical_data(ticker, gap_start.strftime('%Y-%m-%d'), gap_end.strftime('%Y-%m-%d'), timespan='hour', multiplier=1, is_gap_fill=True)
                     else:
                         df = self.get_historical_data(ticker, gap_start.strftime('%Y-%m-%d'), gap_end.strftime('%Y-%m-%d'), timespan='minute', multiplier=1, is_gap_fill=True)
+                    gap_fetch_time = time.time() - gap_fetch_start
                     
                     if not df.empty:
                         rows_inserted = self.db_service.save_stock_data_to_db(ticker, df, is_hourly=is_hourly)
                         total_rows_inserted += rows_inserted
+                        total_gap_fill_time = time.time() - gap_start_time
                         filled_gaps.append({
                             "start": gap_start.isoformat(),
                             "end": gap_end.isoformat(),
                             "is_hourly": is_hourly,
                             "rows_inserted": rows_inserted,
-                            "retries": retry_count
+                            "retries": retry_count,
+                            "fetch_time_seconds": gap_fetch_time,
+                            "total_time_seconds": total_gap_fill_time
                         })
-                        logger.info(f"✓ Filled gap with {rows_inserted} rows after {retry_count} retries")
+                        logger.info(f"✓ Filled gap with {rows_inserted} rows after {retry_count} retries (fetch: {gap_fetch_time:.2f}s, total: {total_gap_fill_time:.2f}s)")
                         gap_filled = True
                     else:
                         retry_count += 1
