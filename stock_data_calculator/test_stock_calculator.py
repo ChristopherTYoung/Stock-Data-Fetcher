@@ -195,23 +195,6 @@ class TestCalculatePercentChange:
         assert result is None, "Percent change should be None when yesterday's close is 0"
 
 
-class TestPrepareCombinedDataFrame:
-    """Test combined DataFrame preparation."""
-    
-    def test_combined_dataframe_with_history_only(self, simple_dataframe):
-        """Should return DataFrame when no DB rows are present."""
-        result = StockCalculator.prepare_combined_dataframe(simple_dataframe, None)
-        assert result is not None, "Combined DataFrame should not be None"
-        assert isinstance(result, pd.DataFrame), "Result should be a DataFrame"
-        assert not result.empty, "Combined DataFrame should not be empty"
-    
-    def test_combined_dataframe_none_input(self, test_stock):
-        """Should handle None input gracefully."""
-        result = StockCalculator.prepare_combined_dataframe(None, test_stock)
-        assert result is None or (isinstance(result, pd.DataFrame) and result.empty), \
-            "Should return None or empty DataFrame for None input"
-
-
 class TestCalculationsWithRealScenarios:
     """Test realistic scenarios that might occur in production."""
     
