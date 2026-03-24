@@ -69,6 +69,7 @@ class Stock(Base):
     composite_figi = Column("composite_figi", String(50), nullable=True)
     share_class_figi = Column("share_class_figi", String(50), nullable=True)
     outstanding_shares = Column("outstanding_shares", BigInteger, nullable=True)
+    total_revenue = Column("total_revenue", BigInteger, nullable=True)
     eps = Column("eps", Numeric(20, 6), nullable=True)
     revenue_per_share = Column("revenue_per_share", Numeric(20, 2), nullable=True)
     homepage_url = Column("homepage_url", String(255), nullable=True)
@@ -87,6 +88,7 @@ class Stock(Base):
     pe_per_growth = Column("pe_per_growth", Integer, nullable=True)
     high52_updated_at = Column("high52_updated_at", DateTime, nullable=True)
     low52_updated_at = Column("low52_updated_at", DateTime, nullable=True)
+    quarterly_financials_updated_at = Column("quarterly_financials_updated_at", DateTime, nullable=True)
     debt_to_equity = Column("debt_to_equity", Numeric(20, 6), nullable=True)
     
     def __repr__(self):

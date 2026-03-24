@@ -29,12 +29,15 @@ class Stock(BaseTest):
     high52 = Column(Integer, nullable=True)
     low52 = Column(Integer, nullable=True)
     percent_change = Column(Integer, nullable=True)
+    outstanding_shares = Column(Integer, nullable=True)
+    total_revenue = Column(Integer, nullable=True)
     eps = Column(Numeric(20, 6), nullable=True)
     revenue_per_share = Column(Numeric(20, 2), nullable=True)
     annual_eps_growth_rate = Column(Integer, nullable=True)
     price_per_sales = Column(Numeric(20, 2), nullable=True)
     price_per_earnings = Column(Integer, nullable=True)
     pe_per_growth = Column(Integer, nullable=True)
+    quarterly_financials_updated_at = Column(DateTime, nullable=True)
     debt_to_equity = Column(Numeric(20, 6), nullable=True)
 
 

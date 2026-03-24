@@ -41,6 +41,7 @@ services:
     environment:
       FINNHUB_TOKEN: ${FINNHUB_TOKEN}
       POLYGON_API_KEY: ${POLYGON_API_KEY}
+      DATABASE_URL: postgresql://stockuser:changeme123@postgres:5432/stock_data
     restart: unless-stopped
     logging:
       driver: json-file

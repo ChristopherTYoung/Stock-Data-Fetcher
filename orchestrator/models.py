@@ -18,5 +18,6 @@ class OrchestratorStatus(BaseModel):
     history_updates: Dict[str, int]
     gap_detection: Dict[str, int]
     stock_calculation: Dict[str, int]
+    quarterly_update: Dict[str, int]
     last_refresh: Optional[str]
     next_refresh: Optional[str]

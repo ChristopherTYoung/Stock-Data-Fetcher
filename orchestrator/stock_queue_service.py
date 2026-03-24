@@ -12,8 +12,9 @@ logger = setup_logging("stock-orchestrator", level=logging.INFO)
 class StockQueueService:
     """Manages stock queues for history updates and gap detection."""
     
-    def __init__(self, stocks_per_request: int = 250, refresh_interval_hours: int = 24):
+    def __init__(self, stocks_per_request: int = 250, quarterly_stocks_per_request: int = 100, refresh_interval_hours: int = 24):
         self.stocks_per_request = stocks_per_request
+        self.quarterly_stocks_per_request = quarterly_stocks_per_request
         self.refresh_interval_hours = refresh_interval_hours
         
         # History queue state
@@ -30,11 +31,16 @@ class StockQueueService:
         self.stock_calculation_queue: List[str] = []
         self.stock_calculation_processed: List[str] = []
         self.stock_calculation_lock = threading.Lock()
+
+        # Quarterly update queue state
+        self.quarterly_update_queue: List[str] = []
+        self.quarterly_update_processed: List[str] = []
+        self.quarterly_update_lock = threading.Lock()
         
         self.last_refresh_time: Optional[datetime] = None
     
-    def refresh_queues(self, tickers: List[str]):
-        """Refresh both queues with new stock list."""
+    def refresh_queues(self, tickers: List[str], quarterly_update_tickers: Optional[List[str]] = None):
+        """Refresh queues with new stock lists."""
         with self.history_lock:
             self.history_queue = tickers.copy()
             self.history_processed = []
@@ -46,10 +52,19 @@ class StockQueueService:
         with self.stock_calculation_lock:
             self.stock_calculation_queue = tickers.copy()
             self.stock_calculation_processed = []
+
+        quarterly_tickers = quarterly_update_tickers if quarterly_update_tickers is not None else []
+        with self.quarterly_update_lock:
+            self.quarterly_update_queue = quarterly_tickers.copy()
+            self.quarterly_update_processed = []
         
         self.last_refresh_time = datetime.now()
         
-        logger.info(f"All queues refreshed with {len(tickers)} tickers")
+        logger.info(
+            "Queues refreshed with %s total tickers and %s quarterly-update tickers",
+            len(tickers),
+            len(quarterly_tickers),
+        )
     
     def get_batch(self, worker_id: Optional[str] = None) -> StockBatchResponse:
         """Get batch of stocks for history updates."""
@@ -147,6 +162,38 @@ class StockQueueService:
                 timestamp=datetime.now().isoformat()
             )
     
+    def get_quarterly_update_batch(self, worker_id: Optional[str] = None) -> StockBatchResponse:
+        """Get batch of stocks for quarterly financial refresh updates."""
+        with self.quarterly_update_lock:
+            if not self.quarterly_update_queue:
+                logger.info(f"No stocks remaining in quarterly update queue (Worker: {worker_id})")
+                return StockBatchResponse(
+                    tickers=[],
+                    batch_size=0,
+                    remaining_in_queue=0,
+                    total_processed=len(self.quarterly_update_processed),
+                    timestamp=datetime.now().isoformat()
+                )
+
+            batch_size = min(self.quarterly_stocks_per_request, len(self.quarterly_update_queue))
+            batch = self.quarterly_update_queue[:batch_size]
+
+            self.quarterly_update_queue[:batch_size] = []
+            self.quarterly_update_processed.extend(batch)
+
+            logger.info(
+                f"[QUARTERLY UPDATE] Allocated {len(batch)} stocks to worker {worker_id or 'unknown'}. "
+                f"Remaining: {len(self.quarterly_update_queue)}, Processed: {len(self.quarterly_update_processed)}"
+            )
+
+            return StockBatchResponse(
+                tickers=batch,
+                batch_size=len(batch),
+                remaining_in_queue=len(self.quarterly_update_queue),
+                total_processed=len(self.quarterly_update_processed),
+                timestamp=datetime.now().isoformat()
+            )
+
     def get_status(self) -> OrchestratorStatus:
         """Get current status of queues."""
         with self.history_lock:
@@ -160,6 +207,10 @@ class StockQueueService:
         with self.stock_calculation_lock:
             stock_calculation_remaining = len(self.stock_calculation_queue)
             stock_calculation_total_processed = len(self.stock_calculation_processed)
+
+        with self.quarterly_update_lock:
+            quarterly_update_remaining = len(self.quarterly_update_queue)
+            quarterly_update_total_processed = len(self.quarterly_update_processed)
         
         next_refresh = None
         if self.last_refresh_time:
@@ -181,6 +232,10 @@ class StockQueueService:
                 "remaining": stock_calculation_remaining,
                 "processed": stock_calculation_total_processed
             },
+            quarterly_update={
+                "remaining": quarterly_update_remaining,
+                "processed": quarterly_update_total_processed,
+            },
             last_refresh=self.last_refresh_time.isoformat() if self.last_refresh_time else None,
             next_refresh=next_refresh
         )
@@ -198,12 +253,17 @@ class StockQueueService:
         with self.stock_calculation_lock:
             self.stock_calculation_queue.extend(self.stock_calculation_processed)
             self.stock_calculation_processed.clear()
+
+        with self.quarterly_update_lock:
+            self.quarterly_update_queue.extend(self.quarterly_update_processed)
+            self.quarterly_update_processed.clear()
         
         logger.info(
-            "Queues reset. History: %s, Gap detection: %s, Stock calculation: %s",
+            "Queues reset. History: %s, Gap detection: %s, Stock calculation: %s, Quarterly update: %s",
             len(self.history_queue),
             len(self.gap_detection_queue),
             len(self.stock_calculation_queue),
+            len(self.quarterly_update_queue),
         )
         
         return {
@@ -212,5 +272,6 @@ class StockQueueService:
             "history_queue": len(self.history_queue),
             "gap_detection_queue": len(self.gap_detection_queue),
             "stock_calculation_queue": len(self.stock_calculation_queue),
+            "quarterly_update_queue": len(self.quarterly_update_queue),
             "timestamp": datetime.now().isoformat()
         }

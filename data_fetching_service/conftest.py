@@ -43,6 +43,7 @@ if "polygon" not in sys.modules:
             price_per_sales = Column(Numeric(20, 2), nullable=True)
             price_per_earnings = Column(Integer, nullable=True)
             pe_per_growth = Column(Integer, nullable=True)
+            quarterly_financials_updated_at = Column(DateTime, nullable=True)
 
         class StockHistory(BaseTest):
             __tablename__ = "stock_history"

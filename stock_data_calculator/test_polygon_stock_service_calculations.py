@@ -145,11 +145,15 @@ def test_update_stocks_persists_calculated_fields(monkeypatch, fake_details):
         net_income_4q_ago=100_000_000,
         trailing_pe=55.0,
         peg_ratio=0.55,
+        debt_to_equity=0.5,
     )
     monkeypatch.setattr(polygon_stock_service.yf, "Ticker", lambda ticker: fake_yf_ticker)
 
-    updated = polygon_stock_service.update_stocks_in_db_from_polygon([{"symbol": "TEST"}])
-    assert updated == 1
+    quarterly_updated = polygon_stock_service.update_quarterly_metrics_for_tickers(["TEST"])
+    assert quarterly_updated == 1
+
+    regular_updated = polygon_stock_service.update_stocks_in_db_from_polygon([{"symbol": "TEST"}])
+    assert regular_updated == 1
 
     with get_db() as db:
         row = db.query(Stock).filter(Stock.symbol == "TEST").first()
@@ -158,11 +162,15 @@ def test_update_stocks_persists_calculated_fields(monkeypatch, fake_details):
         assert row.high52 == 12000
         assert row.low52 == 9000
         assert row.percent_change == 1000
+        # quarterly update provides these:
         assert row.annual_eps_growth_rate == 100
-        assert row.price_per_earnings == 5500
-        assert row.pe_per_growth == 55
         assert row.revenue_per_share == Decimal("20.00")
-        assert row.price_per_sales == Decimal("5.50")
+        assert row.eps == Decimal("2.00")
+        assert row.debt_to_equity == Decimal("0.50")
+
+        assert row.price_per_earnings == 5500  # P/E ratio 55 stored as 5500 (hundredths)
+        assert row.pe_per_growth == 5500  # PEG = 55 stored as 5500 (hundredths)
+        assert row.price_per_sales == Decimal("5.50")  # 110 / 20 = 5.5
 
 
 def test_update_stocks_handles_missing_growth_denominator(monkeypatch, fake_details):
@@ -194,16 +202,21 @@ def test_update_stocks_handles_missing_growth_denominator(monkeypatch, fake_deta
     )
     monkeypatch.setattr(polygon_stock_service.yf, "Ticker", lambda ticker: fake_yf_ticker)
 
-    updated = polygon_stock_service.update_stocks_in_db_from_polygon([{"symbol": "NOGROW"}])
-    assert updated == 1
+    # First: quarterly update to populate database (with no growth since net_income_4q_ago=0)
+    quarterly_updated = polygon_stock_service.update_quarterly_metrics_for_tickers(["NOGROW"])
+    assert quarterly_updated == 1
+
+    # Second: regular update to calculate ratios
+    regular_updated = polygon_stock_service.update_stocks_in_db_from_polygon([{"symbol": "NOGROW"}])
+    assert regular_updated == 1
 
     with get_db() as db:
         row = db.query(Stock).filter(Stock.symbol == "NOGROW").first()
         assert row is not None
-        assert row.annual_eps_growth_rate is None
-        assert row.pe_per_growth is None
+        assert row.annual_eps_growth_rate is None  # Can't calculate growth with zero prior EPS
+        assert row.pe_per_growth is None  # Can't calculate PEG without growth rate
         assert row.revenue_per_share == Decimal("20.00")
-        assert row.price_per_sales == Decimal("5.10")
+        assert row.price_per_sales == Decimal("5.10")  # 102 / 20 = 5.1
 
 
 def test_update_stocks_handles_missing_outstanding_shares_for_revenue_per_share(monkeypatch, fake_details):

@@ -34,6 +34,11 @@ spec:
             secretKeyRef:
               name: finnhub-secret
               key: POLYGON_API_KEY
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: DATABASE_URL
         livenessProbe:
           httpGet:
             path: /health

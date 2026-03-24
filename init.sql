@@ -47,7 +47,9 @@ create table if not exists incrementum.stock (
     price_per_sales numeric(20, 2),
     high52_updated_at timestamp,
     low52_updated_at timestamp,
-    debt_to_equity numeric(20, 6)
+    quarterly_financials_updated_at timestamp,
+    debt_to_equity numeric(20, 6),
+    total_revenue bigint
 );
 
 create table if not exists incrementum.stock_history (
@@ -61,6 +63,12 @@ create table if not exists incrementum.stock_history (
     is_hourly boolean not null default true,
     primary key (stock_symbol, day_and_time, is_hourly)
 );
+
+alter table if exists incrementum.stock
+    add column if not exists quarterly_financials_updated_at timestamp;
+
+alter table if exists incrementum.stock
+    add column if not exists total_revenue bigint;
 
 create table if not exists incrementum.watchlist_stock (
     id int primary key generated always as identity,
