@@ -84,24 +84,15 @@ async def run_quarterly_update_cycle() -> None:
 
 
 def schedule_quarterly_task() -> None:
-    """Schedule quarterly update cycle at midnight UTC."""
+    """Schedule quarterly update cycle at 2:00 AM UTC."""
     scheduler.add_job(
         run_quarterly_update_cycle,
-        trigger=CronTrigger(hour=0, minute=0),
-        id="midnight_quarterly_update_cycle",
-        name="Midnight Quarterly Update Cycle",
+        trigger=CronTrigger(hour=2, minute=0),
+        id="two_am_quarterly_update_cycle",
+        name="2AM Quarterly Update Cycle",
         replace_existing=True,
     )
     scheduler.start()
-
-
-async def run_startup_quarterly_update() -> None:
-    """Run quarterly update once on startup."""
-    try:
-        logger.info("[STARTUP] Running quarterly update on startup...")
-        await run_quarterly_update_cycle()
-    except Exception as error:
-        logger.error("Error in startup quarterly update: %s", error)
 
 
 def signal_handler(signum, _frame):
@@ -122,12 +113,11 @@ if __name__ == "__main__":
         if not dev:
             logger.info("Starting quarterly data fetcher scheduler (Worker ID: %s)", WORKER_ID)
             logger.info("Orchestrator URL: %s", ORCHESTRATOR_URL)
-            logger.info("Quarterly update cycle: at midnight (00:00 UTC) and on startup")
+            logger.info("Quarterly update cycle: daily at 02:00 UTC")
 
             schedule_quarterly_task()
 
             loop = asyncio.get_event_loop()
-            loop.create_task(run_startup_quarterly_update())
             loop.run_forever()
     except KeyboardInterrupt:
         logger.info("KeyboardInterrupt received. Shutting down...")

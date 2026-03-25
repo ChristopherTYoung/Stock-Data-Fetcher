@@ -4,7 +4,6 @@ from fastapi import FastAPI
 
 from quarterly_data_fetcher.logging_config import setup_logging
 from quarterly_data_fetcher.worker_scheduler import (
-    run_startup_quarterly_update,
     schedule_quarterly_task,
     scheduler,
 )
@@ -28,8 +27,6 @@ async def startup_event():
     if not scheduler.running:
         schedule_quarterly_task()
         logger.info("Quarterly data fetcher scheduler started")
-
-    await run_startup_quarterly_update()
 
 
 @app.on_event("shutdown")
