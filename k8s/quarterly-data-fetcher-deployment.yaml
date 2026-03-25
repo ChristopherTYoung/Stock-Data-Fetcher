@@ -40,7 +40,7 @@ spec:
             fieldRef:
               fieldPath: metadata.name
         - name: QUARTERLY_STOCK_DELAY_SECONDS
-          value: "15"
+          value: "30"
         livenessProbe:
           httpGet:
             path: /health

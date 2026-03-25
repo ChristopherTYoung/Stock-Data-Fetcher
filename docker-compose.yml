@@ -90,7 +90,7 @@ services:
       ORCHESTRATOR_URL: http://orchestrator:8080
       WORKER_ID: quarterly-worker-1
       POLYGON_API_KEY: ${POLYGON_API_KEY}
-      QUARTERLY_STOCK_DELAY_SECONDS: "15"
+      QUARTERLY_STOCK_DELAY_SECONDS: "30"
     depends_on:
       postgres:
         condition: service_healthy

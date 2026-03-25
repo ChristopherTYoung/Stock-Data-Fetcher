@@ -4,8 +4,8 @@ from fastapi import FastAPI
 
 from quarterly_data_fetcher.logging_config import setup_logging
 from quarterly_data_fetcher.worker_scheduler import (
-    schedule_quarterly_task,
-    scheduler,
+    start_background_worker,
+    stop_background_worker,
 )
 
 app = FastAPI()
@@ -24,13 +24,11 @@ def health():
 
 @app.on_event("startup")
 async def startup_event():
-    if not scheduler.running:
-        schedule_quarterly_task()
-        logger.info("Quarterly data fetcher scheduler started")
+    start_background_worker()
+    logger.info("Quarterly data fetcher continuous worker started")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    if scheduler.running:
-        scheduler.shutdown()
-        logger.info("Quarterly data fetcher scheduler stopped")
+    await stop_background_worker()
+    logger.info("Quarterly data fetcher continuous worker stopped")
