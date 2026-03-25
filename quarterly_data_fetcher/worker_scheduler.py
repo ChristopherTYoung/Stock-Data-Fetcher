@@ -84,12 +84,12 @@ async def run_quarterly_update_cycle() -> None:
 
 
 def schedule_quarterly_task() -> None:
-    """Schedule quarterly update cycle hourly from 2:00 AM UTC."""
+    """Schedule quarterly update cycle hourly from 4:00 AM UTC."""
     scheduler.add_job(
         run_quarterly_update_cycle,
-        trigger=CronTrigger(hour="2-23", minute=0),
+        trigger=CronTrigger(hour="4-23", minute=0),
         id="hourly_quarterly_update_cycle",
-        name="Hourly Quarterly Update Cycle (2AM start)",
+        name="Hourly Quarterly Update Cycle (4AM start)",
         replace_existing=True,
     )
     scheduler.start()
@@ -113,7 +113,7 @@ if __name__ == "__main__":
         if not dev:
             logger.info("Starting quarterly data fetcher scheduler (Worker ID: %s)", WORKER_ID)
             logger.info("Orchestrator URL: %s", ORCHESTRATOR_URL)
-            logger.info("Quarterly update cycle: hourly from 02:00 to 23:00 UTC")
+            logger.info("Quarterly update cycle: hourly from 04:00 to 23:00 UTC")
 
             schedule_quarterly_task()
 
