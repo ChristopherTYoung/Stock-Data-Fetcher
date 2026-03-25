@@ -12,7 +12,7 @@ logger = setup_logging("stock-orchestrator", level=logging.INFO)
 class StockQueueService:
     """Manages stock queues for history updates and gap detection."""
     
-    def __init__(self, stocks_per_request: int = 250, quarterly_stocks_per_request: int = 125, refresh_interval_hours: int = 24):
+    def __init__(self, stocks_per_request: int = 250, quarterly_stocks_per_request: int = 100000, refresh_interval_hours: int = 24):
         self.stocks_per_request = stocks_per_request
         self.quarterly_stocks_per_request = quarterly_stocks_per_request
         self.refresh_interval_hours = refresh_interval_hours

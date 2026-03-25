@@ -6,7 +6,7 @@ metadata:
   labels:
     app: quarterly-data-fetcher
 spec:
-  replicas: 10
+  replicas: 1
   selector:
     matchLabels:
       app: quarterly-data-fetcher
@@ -40,7 +40,9 @@ spec:
             fieldRef:
               fieldPath: metadata.name
         - name: QUARTERLY_STOCK_DELAY_SECONDS
-          value: "30"
+          value: "5"
+        - name: QUARTERLY_START_DELAY_SECONDS
+          value: "7200"
         livenessProbe:
           httpGet:
             path: /health

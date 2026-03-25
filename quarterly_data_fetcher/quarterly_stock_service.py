@@ -154,7 +154,7 @@ def update_quarterly_metrics_for_tickers(
 
     saved_count = 0
     error_count = 0
-    stock_delay_seconds = _env_float("QUARTERLY_STOCK_DELAY_SECONDS", 30.0)
+    stock_delay_seconds = _env_float("QUARTERLY_STOCK_DELAY_SECONDS", 5.0)
 
     logger.info(
         "[QUARTERLY] Sequential processing enabled with delay=%ss between stocks",

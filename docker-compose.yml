@@ -42,7 +42,7 @@ services:
       FINNHUB_TOKEN: ${FINNHUB_TOKEN}
       POLYGON_API_KEY: ${POLYGON_API_KEY}
       DATABASE_URL: postgresql://stockuser:changeme123@postgres:5432/stock_data
-      QUARTERLY_STOCKS_PER_REQUEST: "125"
+      QUARTERLY_STOCKS_PER_REQUEST: "100000"
     restart: unless-stopped
     logging:
       driver: json-file
@@ -90,7 +90,8 @@ services:
       ORCHESTRATOR_URL: http://orchestrator:8080
       WORKER_ID: quarterly-worker-1
       POLYGON_API_KEY: ${POLYGON_API_KEY}
-      QUARTERLY_STOCK_DELAY_SECONDS: "30"
+      QUARTERLY_STOCK_DELAY_SECONDS: "5"
+      QUARTERLY_START_DELAY_SECONDS: "7200"
     depends_on:
       postgres:
         condition: service_healthy
