@@ -1,6 +1,6 @@
 import logging
 import os
-from concurrent.futures import ThreadPoolExecutor
+import time
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional, Tuple
@@ -13,6 +13,17 @@ from quarterly_data_fetcher.database import Stock, get_db
 from quarterly_data_fetcher.logging_config import setup_logging
 
 logger = setup_logging("quarterly-data-fetcher", level=logging.INFO)
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return max(float(raw), 0.0)
+    except ValueError:
+        logger.warning("Invalid %s value '%s'; using default %.2f", name, raw, default)
+        return default
 
 
 def _column_allowed(column_name: str) -> bool:
@@ -143,27 +154,25 @@ def update_quarterly_metrics_for_tickers(
 
     saved_count = 0
     error_count = 0
+    stock_delay_seconds = _env_float("QUARTERLY_STOCK_DELAY_SECONDS", 5.0)
 
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        futures = {}
-
-        for entry in stock_data:
-            ticker = entry.get("symbol")
-            if not ticker:
-                continue
-
-            try:
-                yf_ticker = yf.Ticker(ticker)
-                yf_info = yf_ticker.info
-                future = executor.submit(_calculate_quarterly_metrics, ticker, yf_ticker, yf_info)
-                futures[ticker] = future
-            except Exception as error:
-                logger.warning("[QUARTERLY] Error setting up %s calculation: %s", ticker, error)
+    logger.info(
+        "[QUARTERLY] Sequential processing enabled with delay=%ss between stocks",
+        stock_delay_seconds,
+    )
 
     client = RESTClient(api_key)
 
-    for ticker, future in futures.items():
+    for idx, entry in enumerate(stock_data):
+        ticker = entry.get("symbol")
+        if not ticker:
+            if status_dict:
+                status_dict["progress"] = idx + 1
+            continue
+
         try:
+            yf_ticker = yf.Ticker(ticker)
+            yf_info = yf_ticker.info
             (
                 annual_eps_growth_rate,
                 eps_value,
@@ -172,52 +181,62 @@ def update_quarterly_metrics_for_tickers(
                 total_revenue,
                 debt_to_equity,
                 quarterly_financials_updated_at,
-            ) = future.result(timeout=30)
+            ) = _calculate_quarterly_metrics(
+                ticker,
+                yf_ticker,
+                yf_info,
+            )
 
             if quarterly_financials_updated_at is None:
                 error_count += 1
-                continue
+            else:
+                try:
+                    details = client.get_ticker_details(ticker)
+                except Exception as error:
+                    logger.warning("[QUARTERLY] Error fetching details for %s: %s", ticker, error)
+                    details = None
 
-            try:
-                details = client.get_ticker_details(ticker)
-            except Exception as error:
-                logger.warning("[QUARTERLY] Error fetching details for %s: %s", ticker, error)
-                details = None
+                company_name = (getattr(details, "name", ticker) or ticker) if details else ticker
+                if isinstance(company_name, str) and len(company_name) > 100:
+                    company_name = company_name[:100]
 
-            company_name = (getattr(details, "name", ticker) or ticker) if details else ticker
-            if isinstance(company_name, str) and len(company_name) > 100:
-                company_name = company_name[:100]
+                defaults = {
+                    "company_name": company_name,
+                    "updated_at": datetime.now(),
+                    "annual_eps_growth_rate": annual_eps_growth_rate,
+                    "quarterly_financials_updated_at": quarterly_financials_updated_at,
+                    "eps": eps_value,
+                    "revenue_per_share": revenue_per_share,
+                    "outstanding_shares": outstanding_shares,
+                    "total_revenue": total_revenue,
+                    "debt_to_equity": debt_to_equity,
+                }
 
-            defaults = {
-                "company_name": company_name,
-                "updated_at": datetime.now(),
-                "annual_eps_growth_rate": annual_eps_growth_rate,
-                "quarterly_financials_updated_at": quarterly_financials_updated_at,
-                "eps": eps_value,
-                "revenue_per_share": revenue_per_share,
-                "outstanding_shares": outstanding_shares,
-                "total_revenue": total_revenue,
-                "debt_to_equity": debt_to_equity,
-            }
+                with get_db() as db:
+                    existing = db.execute(select(Stock).where(Stock.symbol == ticker)).first()
 
-            with get_db() as db:
-                existing = db.execute(select(Stock).where(Stock.symbol == ticker)).first()
+                    if existing:
+                        db.execute(Stock.__table__.update().where(Stock.symbol == ticker).values(**defaults))
+                    else:
+                        insert_payload = {k: v for k, v in defaults.items() if _column_allowed(k)}
+                        insert_payload["symbol"] = ticker
+                        db.execute(Stock.__table__.insert().values(**insert_payload))
+                    db.commit()
 
-                if existing:
-                    db.execute(Stock.__table__.update().where(Stock.symbol == ticker).values(**defaults))
-                else:
-                    insert_payload = {k: v for k, v in defaults.items() if _column_allowed(k)}
-                    insert_payload["symbol"] = ticker
-                    db.execute(Stock.__table__.insert().values(**insert_payload))
-                db.commit()
-
-            saved_count += 1
-            logger.info("[QUARTERLY] Saved quarterly metrics for %s", ticker)
+                saved_count += 1
+                logger.info("[QUARTERLY] Saved quarterly metrics for %s", ticker)
 
         except Exception as error:
             error_count += 1
             if error_count <= 10:
                 logger.error("[QUARTERLY] Error processing %s: %s", ticker, error)
+
+        if status_dict:
+            status_dict["progress"] = idx + 1
+
+        if stock_delay_seconds > 0 and idx < len(stock_data) - 1:
+            logger.debug("[QUARTERLY] Sleeping %.2fs before next stock", stock_delay_seconds)
+            time.sleep(stock_delay_seconds)
 
     logger.info("[QUARTERLY] COMPLETE: Saved %s stocks with quarterly metrics", saved_count)
     logger.info("[QUARTERLY] Errors: %s", error_count)
