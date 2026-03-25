@@ -7,6 +7,8 @@ metadata:
     app: quarterly-data-fetcher
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: quarterly-data-fetcher

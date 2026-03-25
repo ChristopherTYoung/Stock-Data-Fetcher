@@ -48,8 +48,12 @@ async def process_quarterly_update_batch(tickers: list[str]) -> None:
         return
 
     try:
-        logger.info("[QUARTERLY UPDATE] Processing %s tickers in single-threaded mode...", len(tickers))
-        update_quarterly_metrics_for_tickers(tickers, None)
+        logger.info(
+            "[QUARTERLY UPDATE] Processing %s tickers in single-threaded mode (background thread for API responsiveness)...",
+            len(tickers),
+        )
+        # Keep ticker processing single-threaded while preventing the FastAPI event loop from blocking.
+        await asyncio.to_thread(update_quarterly_metrics_for_tickers, tickers, None)
         logger.info("[QUARTERLY UPDATE] Processing completed")
 
     except Exception as error:
