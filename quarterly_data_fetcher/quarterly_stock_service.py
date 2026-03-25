@@ -90,7 +90,8 @@ def _calculate_quarterly_metrics(
 
         if eps_value is not None and previous_eps_value not in (None, 0):
             try:
-                annual_eps_growth_rate = ((float(eps_value) / float(previous_eps_value)) - 1.0) * 100.0
+                prev_eps = float(previous_eps_value)
+                annual_eps_growth_rate = ((float(eps_value) - prev_eps) / abs(prev_eps)) * 100.0
                 logger.info("[%s] calculated annual_eps_growth_rate=%s", ticker, annual_eps_growth_rate)
             except Exception:
                 annual_eps_growth_rate = None
