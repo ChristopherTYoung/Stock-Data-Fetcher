@@ -43,6 +43,13 @@ jobs:
           push: true
           tags: christophertyoung/stock-data-calculator:latest
 
+      - name: Build and push quarterly_data_fetcher
+        uses: docker/build-push-action@v5
+        with:
+          context: ./quarterly_data_fetcher
+          push: true
+          tags: christophertyoung/quarterly_data_fetcher:latest
+
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
         with:
@@ -56,12 +63,14 @@ jobs:
           kubectl rollout restart deployment data-fetcher -n stock-data-fetchers
           kubectl rollout restart deployment orchestrator -n stock-data-fetchers
           kubectl rollout restart deployment stock-data-calculator -n stock-data-fetchers
+          kubectl rollout restart deployment quarterly-data-fetcher -n stock-data-fetchers
 
       - name: Wait for rollouts
         run: |
           kubectl rollout status deployment data-fetcher -n stock-data-fetchers
           kubectl rollout status deployment orchestrator -n stock-data-fetchers
           kubectl rollout status deployment stock-data-calculator -n stock-data-fetchers
+          kubectl rollout status deployment quarterly-data-fetcher -n stock-data-fetchers
 
       - name: Show pod status
         run: kubectl get pods -n stock-data-fetchers

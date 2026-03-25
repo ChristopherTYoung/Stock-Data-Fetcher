@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: quarterly-data-fetcher-service
+  namespace: stock-data-fetchers
+  labels:
+    app: quarterly-data-fetcher
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  selector:
+    app: quarterly-data-fetcher

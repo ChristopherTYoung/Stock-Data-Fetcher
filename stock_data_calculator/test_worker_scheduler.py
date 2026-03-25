@@ -41,17 +41,6 @@ def test_fetch_calculation_batch_from_orchestrator(monkeypatch):
     assert fake_client.calls[0][0].endswith("/get-stock-calculation-batch")
 
 
-def test_fetch_quarterly_update_batch_from_orchestrator(monkeypatch):
-    fake_payload = {"tickers": ["AAPL"], "remaining_in_queue": 5}
-    fake_client = _FakeAsyncClient(fake_payload)
-
-    monkeypatch.setattr(worker_scheduler.httpx, "AsyncClient", lambda timeout: fake_client)
-
-    tickers = asyncio.run(worker_scheduler.fetch_quarterly_update_batch_from_orchestrator())
-    assert tickers == ["AAPL"]
-    assert fake_client.calls[0][0].endswith("/get-quarterly-update-batch")
-
-
 def test_process_stock_calculation_batch_uses_executor(monkeypatch):
     calls = []
 
@@ -80,20 +69,3 @@ def test_run_calculation_cycle_processes_regular_updates(monkeypatch):
     asyncio.run(worker_scheduler.run_calculation_cycle())
 
     assert processed == [["MSFT", "NVDA"]]
-
-
-def test_run_quarterly_update_cycle_processes_quarterly_updates(monkeypatch):
-    processed = []
-
-    async def fake_quarterly_fetch():
-        return ["AAPL"]
-
-    async def fake_process(tickers):
-        processed.append(tickers)
-
-    monkeypatch.setattr(worker_scheduler, "fetch_quarterly_update_batch_from_orchestrator", fake_quarterly_fetch)
-    monkeypatch.setattr(worker_scheduler, "process_quarterly_update_batch", fake_process)
-
-    asyncio.run(worker_scheduler.run_quarterly_update_cycle())
-
-    assert processed == [["AAPL"]]

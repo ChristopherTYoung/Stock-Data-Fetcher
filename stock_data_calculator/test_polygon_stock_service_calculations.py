@@ -7,6 +7,7 @@ import pandas as pd
 
 from stock_data_calculator import polygon_stock_service
 from stock_data_calculator.database import Stock, get_db
+from quarterly_data_fetcher import quarterly_stock_service
 
 
 def _to_ms(dt: datetime) -> int:
@@ -137,6 +138,7 @@ def test_update_stocks_persists_calculated_fields(monkeypatch, fake_details):
 
     monkeypatch.setenv("POLYGON_API_KEY", "test-key")
     monkeypatch.setattr(polygon_stock_service, "RESTClient", lambda api_key: fake_client)
+    monkeypatch.setattr(quarterly_stock_service, "RESTClient", lambda api_key: fake_client)
     
     fake_yf_ticker = _FakeYfinanceTicker(
         shares_outstanding=100_000_000,
@@ -147,9 +149,9 @@ def test_update_stocks_persists_calculated_fields(monkeypatch, fake_details):
         peg_ratio=0.55,
         debt_to_equity=0.5,
     )
-    monkeypatch.setattr(polygon_stock_service.yf, "Ticker", lambda ticker: fake_yf_ticker)
+    monkeypatch.setattr(quarterly_stock_service.yf, "Ticker", lambda ticker: fake_yf_ticker)
 
-    quarterly_updated = polygon_stock_service.update_quarterly_metrics_for_tickers(["TEST"])
+    quarterly_updated = quarterly_stock_service.update_quarterly_metrics_for_tickers(["TEST"])
     assert quarterly_updated == 1
 
     regular_updated = polygon_stock_service.update_stocks_in_db_from_polygon([{"symbol": "TEST"}])
@@ -193,6 +195,7 @@ def test_update_stocks_handles_missing_growth_denominator(monkeypatch, fake_deta
 
     monkeypatch.setenv("POLYGON_API_KEY", "test-key")
     monkeypatch.setattr(polygon_stock_service, "RESTClient", lambda api_key: fake_client)
+    monkeypatch.setattr(quarterly_stock_service, "RESTClient", lambda api_key: fake_client)
     
     fake_yf_ticker = _FakeYfinanceTicker(
         shares_outstanding=100_000_000,
@@ -200,10 +203,10 @@ def test_update_stocks_handles_missing_growth_denominator(monkeypatch, fake_deta
         total_revenue=2_000_000_000,
         net_income_4q_ago=0
     )
-    monkeypatch.setattr(polygon_stock_service.yf, "Ticker", lambda ticker: fake_yf_ticker)
+    monkeypatch.setattr(quarterly_stock_service.yf, "Ticker", lambda ticker: fake_yf_ticker)
 
     # First: quarterly update to populate database (with no growth since net_income_4q_ago=0)
-    quarterly_updated = polygon_stock_service.update_quarterly_metrics_for_tickers(["NOGROW"])
+    quarterly_updated = quarterly_stock_service.update_quarterly_metrics_for_tickers(["NOGROW"])
     assert quarterly_updated == 1
 
     # Second: regular update to calculate ratios
@@ -237,6 +240,7 @@ def test_update_stocks_handles_missing_outstanding_shares_for_revenue_per_share(
 
     monkeypatch.setenv("POLYGON_API_KEY", "test-key")
     monkeypatch.setattr(polygon_stock_service, "RESTClient", lambda api_key: fake_client)
+    monkeypatch.setattr(quarterly_stock_service, "RESTClient", lambda api_key: fake_client)
 
     fake_yf_ticker = _FakeYfinanceTicker(
         shares_outstanding=None,
@@ -244,7 +248,7 @@ def test_update_stocks_handles_missing_outstanding_shares_for_revenue_per_share(
         total_revenue=2_000_000_000,
         net_income_4q_ago=100_000_000
     )
-    monkeypatch.setattr(polygon_stock_service.yf, "Ticker", lambda ticker: fake_yf_ticker)
+    monkeypatch.setattr(quarterly_stock_service.yf, "Ticker", lambda ticker: fake_yf_ticker)
 
     updated = polygon_stock_service.update_stocks_in_db_from_polygon([{"symbol": "NOSHARES"}])
     assert updated == 1

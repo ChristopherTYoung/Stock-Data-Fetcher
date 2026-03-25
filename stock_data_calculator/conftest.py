@@ -97,3 +97,4 @@ dbmod.init_db = init_db
 # Register both names so direct and package imports resolve consistently.
 sys.modules["stock_data_calculator.database"] = dbmod
 sys.modules["database"] = dbmod
+sys.modules["quarterly_data_fetcher.database"] = dbmod

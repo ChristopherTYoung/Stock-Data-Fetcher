@@ -76,6 +76,31 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Quarterly Data Fetcher Service
+  quarterly-data-fetcher:
+    build:
+      context: ./quarterly_data_fetcher
+      dockerfile: Dockerfile
+    container_name: stock-quarterly-data-fetcher
+    ports:
+      - "8082:8000"
+    environment:
+      DATABASE_URL: postgresql://stockuser:changeme123@postgres:5432/stock_data
+      ORCHESTRATOR_URL: http://orchestrator:8080
+      WORKER_ID: quarterly-worker-1
+      POLYGON_API_KEY: ${POLYGON_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      orchestrator:
+        condition: service_started
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # Loki - Log aggregation backend
   loki:
     image: grafana/loki:latest
