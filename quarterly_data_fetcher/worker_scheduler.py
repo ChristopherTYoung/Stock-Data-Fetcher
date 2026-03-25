@@ -5,7 +5,6 @@ import logging
 import os
 import signal
 import sys
-import threading
 
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -44,24 +43,15 @@ async def fetch_quarterly_update_batch_from_orchestrator() -> list[str]:
 
 
 async def process_quarterly_update_batch(tickers: list[str]) -> None:
-    """Run quarterly financial calculations for the assigned stock list on a thread."""
+    """Run quarterly financial calculations for the assigned stock list in-process."""
     if not tickers:
         logger.info("[QUARTERLY UPDATE] No tickers to process")
         return
 
     try:
-        logger.info("[QUARTERLY UPDATE] Starting thread to process %s tickers...", len(tickers))
-
-        quarterly_thread = threading.Thread(
-            target=update_quarterly_metrics_for_tickers,
-            args=(tickers, None),
-            name="quarterly-update-worker-thread",
-            daemon=False,
-        )
-        quarterly_thread.start()
-        logger.info("[QUARTERLY UPDATE] Thread started with ID: %s", quarterly_thread.ident)
-        quarterly_thread.join()
-        logger.info("[QUARTERLY UPDATE] Thread completed")
+        logger.info("[QUARTERLY UPDATE] Processing %s tickers in single-threaded mode...", len(tickers))
+        update_quarterly_metrics_for_tickers(tickers, None)
+        logger.info("[QUARTERLY UPDATE] Processing completed")
 
     except Exception as error:
         logger.error("Error processing quarterly update batch: %s", error)
