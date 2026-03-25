@@ -40,7 +40,7 @@ spec:
               name: postgres-secret
               key: DATABASE_URL
         - name: QUARTERLY_STOCKS_PER_REQUEST
-          value: "100000"
+          value: "1000"
         livenessProbe:
           httpGet:
             path: /health

@@ -180,14 +180,14 @@ def update_quarterly_metrics_for_tickers(
                 outstanding_shares,
                 total_revenue,
                 debt_to_equity,
-                quarterly_financials_updated_at,
+                calculated_quarterly_financials_updated_at,
             ) = _calculate_quarterly_metrics(
                 ticker,
                 yf_ticker,
                 yf_info,
             )
 
-            if quarterly_financials_updated_at is None:
+            if calculated_quarterly_financials_updated_at is None:
                 error_count += 1
             else:
                 try:
@@ -195,6 +195,9 @@ def update_quarterly_metrics_for_tickers(
                 except Exception as error:
                     logger.warning("[QUARTERLY] Error fetching details for %s: %s", ticker, error)
                     details = None
+
+                # Stamp the refresh time when persisting so the DB always reflects actual write time.
+                persisted_at_utc = datetime.utcnow()
 
                 company_name = (getattr(details, "name", ticker) or ticker) if details else ticker
                 if isinstance(company_name, str) and len(company_name) > 100:
@@ -204,7 +207,7 @@ def update_quarterly_metrics_for_tickers(
                     "company_name": company_name,
                     "updated_at": datetime.now(),
                     "annual_eps_growth_rate": annual_eps_growth_rate,
-                    "quarterly_financials_updated_at": quarterly_financials_updated_at,
+                    "quarterly_financials_updated_at": persisted_at_utc,
                     "eps": eps_value,
                     "revenue_per_share": revenue_per_share,
                     "outstanding_shares": outstanding_shares,

@@ -132,6 +132,34 @@ data:
     ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS price_per_earnings INTEGER;
     ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS pe_per_growth INTEGER;
     ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS quarterly_financials_updated_at TIMESTAMP;
-    ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS total_revenue INTEGER;
+    ALTER TABLE IF EXISTS incrementum.stock ADD COLUMN IF NOT EXISTS total_revenue BIGINT;
+
+    -- Migration: ensure large financial fields use BIGINT to prevent integer overflow
+    DO $$
+    BEGIN
+        IF EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'incrementum'
+              AND table_name = 'stock'
+              AND column_name = 'total_revenue'
+              AND data_type <> 'bigint'
+        ) THEN
+            ALTER TABLE incrementum.stock
+                ALTER COLUMN total_revenue TYPE BIGINT USING total_revenue::BIGINT;
+        END IF;
+
+        IF EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'incrementum'
+              AND table_name = 'stock'
+              AND column_name = 'outstanding_shares'
+              AND data_type <> 'bigint'
+        ) THEN
+            ALTER TABLE incrementum.stock
+                ALTER COLUMN outstanding_shares TYPE BIGINT USING outstanding_shares::BIGINT;
+        END IF;
+    END $$;
 
 

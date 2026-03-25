@@ -18,7 +18,7 @@ app = FastAPI(title="Stock Orchestrator", version="1.0.0")
 
 polygon_service = PolygonService()
 stocks_per_request = int(os.getenv("STOCKS_PER_REQUEST", "250"))
-quarterly_stocks_per_request = int(os.getenv("QUARTERLY_STOCKS_PER_REQUEST", "100000"))
+quarterly_stocks_per_request = int(os.getenv("QUARTERLY_STOCKS_PER_REQUEST", "1000"))
 queue_service = StockQueueService(
     stocks_per_request=stocks_per_request,
     quarterly_stocks_per_request=quarterly_stocks_per_request,
