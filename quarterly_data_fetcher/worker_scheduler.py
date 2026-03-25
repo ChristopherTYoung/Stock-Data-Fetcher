@@ -78,7 +78,7 @@ async def run_continuous_quarterly_worker() -> None:
     """Continuously fetch and process quarterly batches from orchestrator."""
     no_work_sleep_seconds = float(os.getenv("QUARTERLY_NO_WORK_SLEEP_SECONDS", "60"))
     error_sleep_seconds = float(os.getenv("QUARTERLY_ERROR_SLEEP_SECONDS", "30"))
-    startup_delay_seconds = max(float(os.getenv("QUARTERLY_START_DELAY_SECONDS", "7200")), 0.0)
+    startup_delay_seconds = max(float(os.getenv("QUARTERLY_START_DELAY_SECONDS", "0")), 0.0)
 
     logger.info(
         "[QUARTERLY UPDATE] Continuous worker started (startup delay=%ss, no-work sleep=%ss, error sleep=%ss)",
@@ -138,7 +138,7 @@ if __name__ == "__main__":
         if not dev:
             logger.info("Starting quarterly data fetcher worker (Worker ID: %s)", WORKER_ID)
             logger.info("Orchestrator URL: %s", ORCHESTRATOR_URL)
-            logger.info("Quarterly update mode: continuous batch pull after startup delay")
+            logger.info("Quarterly update mode: continuous batch pull on startup")
 
             loop = asyncio.get_event_loop()
             loop.create_task(run_continuous_quarterly_worker())

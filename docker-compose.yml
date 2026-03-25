@@ -91,7 +91,7 @@ services:
       WORKER_ID: quarterly-worker-1
       POLYGON_API_KEY: ${POLYGON_API_KEY}
       QUARTERLY_STOCK_DELAY_SECONDS: "5"
-      QUARTERLY_START_DELAY_SECONDS: "7200"
+      QUARTERLY_START_DELAY_SECONDS: "0"
     depends_on:
       postgres:
         condition: service_healthy
