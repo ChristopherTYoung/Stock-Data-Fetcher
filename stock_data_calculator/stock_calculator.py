@@ -140,6 +140,7 @@ class StockCalculator:
                     start_of_yesterday = start_of_today - timedelta(days=1)
                     yesterday_rows = combined[(combined.index >= start_of_yesterday) & (combined.index < start_of_today)]
                     
+                    logger.debug(f"Yesterday: {start_of_yesterday}")
                     logger.debug(f"Yesterday data for {stock.symbol}: {len(yesterday_rows)} records")
                     
                     if not yesterday_rows.empty:
