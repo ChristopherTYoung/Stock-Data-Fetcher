@@ -12,6 +12,8 @@ from sqlalchemy import create_engine, text
 from keras import Model
 from keras.layers import Concatenate, Conv1D, Dense, Embedding, Flatten, Input
 from keras.optimizers import Adam
+import json
+from datetime import datetime
 
 
 MODEL_INPUT_COLUMNS = ["log_open", "log_high", "log_low", "log_close", "log_volume"]
@@ -386,6 +388,7 @@ def train_shared_model_for_window(
     symbol_embedding_dim: int,
     verbose: int,
 ) -> Tuple[Model, Dict[str, pd.DataFrame], float, float]:
+) -> Tuple[Model, Dict[str, pd.DataFrame], float, float, Dict[str, Tuple[float, float]]]:
     train_rows: List[pd.DataFrame] = []
     for frame in stock_frames.values():
         subset = frame[frame["month"].isin(set(train_months))]
@@ -453,7 +456,7 @@ def train_shared_model_for_window(
         verbose=verbose,
     )
 
-    return model, normalized_frames, ret_mean, ret_std
+    return model, normalized_frames, ret_mean, ret_std, feature_stats
 
 
 def predict_month_for_symbol(
