@@ -3,11 +3,14 @@
 from datetime import datetime
 import logging
 import os
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import bindparam, create_engine, text
 
-from logging_config import setup_logging
+try:
+    from .logging_config import setup_logging
+except ImportError:
+    from logging_config import setup_logging
 
 logger = setup_logging("stock-orchestrator", level=logging.INFO)
 
@@ -20,8 +23,12 @@ def _quarter_index(value: datetime) -> int:
 
 def _requires_quarterly_refresh(
     last_updated: Optional[datetime],
+    has_missing_quarterly_data: bool,
     now: datetime,
 ) -> bool:
+    if has_missing_quarterly_data:
+        return True
+
     if last_updated is None:
         return True
 
@@ -51,7 +58,14 @@ def get_tickers_requiring_quarterly_update(tickers: List[str]) -> List[str]:
     query = (
         text(
             """
-            SELECT symbol, quarterly_financials_updated_at
+            SELECT
+                symbol,
+                quarterly_financials_updated_at,
+                eps,
+                revenue_per_share,
+                outstanding_shares,
+                total_revenue,
+                debt_to_equity
             FROM incrementum.stock
             WHERE symbol IN :symbols
             """
@@ -71,14 +85,26 @@ def get_tickers_requiring_quarterly_update(tickers: List[str]) -> List[str]:
 
         engine.dispose()
 
-        last_updated_by_symbol: Dict[str, Optional[datetime]] = {
-            row["symbol"]: row["quarterly_financials_updated_at"] for row in rows
+        rows_by_symbol: Dict[str, Dict[str, Any]] = {
+            row["symbol"]: row for row in rows
         }
 
         now = datetime.utcnow()
         quarterly_tickers: List[str] = []
         for symbol in symbols:
-            if _requires_quarterly_refresh(last_updated_by_symbol.get(symbol), now):
+            row = rows_by_symbol.get(symbol)
+            last_updated = row["quarterly_financials_updated_at"] if row else None
+            has_missing_quarterly_data = row is None or any(
+                row[column] is None
+                for column in (
+                    "eps",
+                    "revenue_per_share",
+                    "outstanding_shares",
+                    "total_revenue",
+                    "debt_to_equity",
+                )
+            )
+            if _requires_quarterly_refresh(last_updated, has_missing_quarterly_data, now):
                 quarterly_tickers.append(symbol)
 
         logger.info(
