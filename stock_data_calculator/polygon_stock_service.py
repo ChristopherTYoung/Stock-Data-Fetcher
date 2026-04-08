@@ -299,6 +299,12 @@ def update_stocks_in_db_from_polygon(
                 defaults['price_per_sales'] = _to_two_decimal_numeric(price_per_sales_value)
                 defaults['price_per_earnings'] = _to_percent_hundredths(price_per_earnings_value) if price_per_earnings_value else None
                 defaults['pe_per_growth'] = _to_percent_hundredths(pe_per_growth_value) if pe_per_growth_value else None
+                
+                # Detect candlestick pattern for the last candle
+                last_candle_pattern = StockCalculator.calculate_last_candlestick_pattern(history_df, stock_for_calc)
+                if last_candle_pattern:
+                    defaults['last_candle'] = last_candle_pattern
+                    logger.info("[%s] detected candlestick pattern: %s", ticker, last_candle_pattern)
 
                 if existing:
                     # Update only allowed columns

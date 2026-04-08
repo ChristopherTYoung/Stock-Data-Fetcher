@@ -93,6 +93,7 @@ class Stock(Base):
     low52_updated_at = Column("low52_updated_at", DateTime, nullable=True)
     quarterly_financials_updated_at = Column("quarterly_financials_updated_at", DateTime, nullable=True)
     debt_to_equity = Column("debt_to_equity", Numeric(20, 6), nullable=True)
+    last_candle = Column("last_candle", String(20), nullable=True)
 
     def __repr__(self):
         return f"<Stock(symbol={self.symbol}, company={self.company_name})>"

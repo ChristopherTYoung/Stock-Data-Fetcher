@@ -204,3 +204,171 @@ class StockCalculator:
         except Exception as e:
             logger.error(f"Error calculating P/E for {symbol}. Error: {type(e).__name__}: {e}", exc_info=True)
             return None
+
+    @staticmethod
+    def calculate_last_candlestick_pattern(history_data: pd.DataFrame, stock: Stock) -> Optional[str]:
+        """
+        Detect the candlestick pattern of the last candle in the history data.
+        Returns the pattern name ('hammer', 'inverted_hammer', 'hanging_man') or None.
+        """
+        symbol = stock.symbol if stock and hasattr(stock, 'symbol') else 'UNKNOWN'
+        
+        if not isinstance(history_data, pd.DataFrame) or history_data.empty:
+            logger.debug(f"No history data available for candlestick pattern detection for {symbol}")
+            return None
+        
+        try:
+            df = history_data.copy()
+            
+            # Get the last row (most recent candle)
+            last_candle = df.iloc[-1]
+            
+            # Extract OHLC values - handle both Series attributes and dict-like access
+            open_price = last_candle['open'] if 'open' in df.columns else getattr(last_candle, 'open', None)
+            close_price = last_candle['close'] if 'close' in df.columns else getattr(last_candle, 'close', None)
+            high = last_candle['high'] if 'high' in df.columns else getattr(last_candle, 'high', None)
+            low = last_candle['low'] if 'low' in df.columns else getattr(last_candle, 'low', None)
+            
+            if any(x is None for x in [open_price, close_price, high, low]):
+                logger.debug(f"Incomplete OHLC data for {symbol}: open={open_price}, close={close_price}, high={high}, low={low}")
+                return None
+            
+            # Convert to float to ensure numeric operations work
+            open_price = float(open_price)
+            close_price = float(close_price)
+            high = float(high)
+            low = float(low)
+            
+            # Detect pattern
+            pattern = CandlestickPatternDetector.detect_last_candle(
+                open_price, close_price, high, low
+            )
+            
+            if pattern:
+                logger.debug(f"Detected candlestick pattern for {symbol}: {pattern}")
+            
+            return pattern
+            
+        except Exception as e:
+            logger.warning(f"Error detecting candlestick pattern for {symbol}: {type(e).__name__}: {e}")
+            return None
+
+
+class CandlestickPatternDetector:
+    """Detects candlestick patterns based on proportion thresholds."""
+    
+    # Pattern thresholds
+    HAMMER_BODY_MAX = 0.25
+    HAMMER_LOWER_WICK_MIN_RATIO = 2.0
+    HAMMER_UPPER_WICK_MAX = 0.25
+    
+    INVERTED_HAMMER_BODY_MAX = 0.25
+    INVERTED_HAMMER_UPPER_WICK_MIN_RATIO = 2.0
+    INVERTED_HAMMER_LOWER_WICK_MAX = 0.25
+    
+    HANGING_MAN_BODY_MAX = 0.25
+    HANGING_MAN_LOWER_WICK_MIN_RATIO = 2.0
+    HANGING_MAN_UPPER_WICK_MAX = 0.25
+    
+    @staticmethod
+    def detect_hammer(open_price: float, close_price: float, high: float, low: float) -> bool:
+        """
+        Detect hammer pattern:
+        - Small body at the top (close > open, bullish)
+        - Long lower wick (at least 2x the body)
+        - Little to no upper wick
+        """
+        total_size = high - low
+        if total_size == 0:
+            return False
+        
+        # Hammer must be bullish
+        if close_price <= open_price:
+            return False
+        
+        body_size = close_price - open_price
+        lower_wick = open_price - low
+        upper_wick = high - close_price
+        
+        body_ratio = body_size / total_size
+        upper_wick_ratio = upper_wick / total_size
+        
+        wick_to_body_ratio = lower_wick / body_size if body_size > 0 else 0
+        
+        return (
+            body_ratio <= CandlestickPatternDetector.HAMMER_BODY_MAX and
+            wick_to_body_ratio >= CandlestickPatternDetector.HAMMER_LOWER_WICK_MIN_RATIO and
+            upper_wick_ratio <= CandlestickPatternDetector.HAMMER_UPPER_WICK_MAX
+        )
+    
+    @staticmethod
+    def detect_inverted_hammer(open_price: float, close_price: float, high: float, low: float) -> bool:
+        """
+        Detect inverted hammer pattern:
+        - Small body at the bottom
+        - Long upper wick (at least 2x the body)
+        - Little to no lower wick
+        """
+        total_size = high - low
+        if total_size == 0:
+            return False
+        
+        body_size = abs(close_price - open_price)
+        lower_wick = min(open_price, close_price) - low
+        upper_wick = high - max(open_price, close_price)
+        
+        body_ratio = body_size / total_size
+        lower_wick_ratio = lower_wick / total_size
+        
+        wick_to_body_ratio = upper_wick / body_size if body_size > 0 else 0
+        
+        return (
+            body_ratio <= CandlestickPatternDetector.INVERTED_HAMMER_BODY_MAX and
+            wick_to_body_ratio >= CandlestickPatternDetector.INVERTED_HAMMER_UPPER_WICK_MIN_RATIO and
+            lower_wick_ratio <= CandlestickPatternDetector.INVERTED_HAMMER_LOWER_WICK_MAX
+        )
+    
+    @staticmethod
+    def detect_hanging_man(open_price: float, close_price: float, high: float, low: float) -> bool:
+        """
+        Detect hanging man pattern:
+        - Small body at the top (close < open, bearish)
+        - Long lower wick (at least 2x the body)
+        - Little to no upper wick
+        """
+        total_size = high - low
+        if total_size == 0:
+            return False
+        
+        # Hanging man must be bearish
+        if close_price >= open_price:
+            return False
+        
+        body_size = open_price - close_price
+        lower_wick = close_price - low
+        upper_wick = high - open_price
+        
+        body_ratio = body_size / total_size
+        upper_wick_ratio = upper_wick / total_size
+        
+        wick_to_body_ratio = lower_wick / body_size if body_size > 0 else 0
+        
+        return (
+            body_ratio <= CandlestickPatternDetector.HANGING_MAN_BODY_MAX and
+            wick_to_body_ratio >= CandlestickPatternDetector.HANGING_MAN_LOWER_WICK_MIN_RATIO and
+            upper_wick_ratio <= CandlestickPatternDetector.HANGING_MAN_UPPER_WICK_MAX
+        )
+    
+    @staticmethod
+    def detect_last_candle(open_price: float, close_price: float, high: float, low: float) -> Optional[str]:
+        """
+        Identify which pattern the candle matches.
+        Returns the pattern name or None if no pattern matches.
+        """
+        if CandlestickPatternDetector.detect_hammer(open_price, close_price, high, low):
+            return "hammer"
+        elif CandlestickPatternDetector.detect_inverted_hammer(open_price, close_price, high, low):
+            return "inverted_hammer"
+        elif CandlestickPatternDetector.detect_hanging_man(open_price, close_price, high, low):
+            return "hanging_man"
+        return None
