@@ -49,9 +49,14 @@ def test_process_stock_calculation_batch_uses_executor(monkeypatch):
         return len(tickers)
 
     monkeypatch.setattr(worker_scheduler, "update_metadata_for_tickers", fake_update)
+    async def fake_to_thread(func, *args, **kwargs):
+        calls.append(("to_thread", func.__name__, args))
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(worker_scheduler.asyncio, "to_thread", fake_to_thread)
 
     asyncio.run(worker_scheduler.process_stock_calculation_batch(["AAPL", "MSFT"]))
-    assert calls == [("metadata", ["AAPL", "MSFT"])]
+    assert calls == [("to_thread", "fake_update", (["AAPL", "MSFT"], None)), ("metadata", ["AAPL", "MSFT"])]
 
 
 def test_run_calculation_cycle_processes_regular_updates(monkeypatch):

@@ -5,7 +5,6 @@ import logging
 import os
 import signal
 import sys
-import threading
 
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -48,28 +47,15 @@ async def fetch_calculation_batch_from_orchestrator() -> list[str]:
 
 
 async def process_stock_calculation_batch(tickers: list[str]) -> None:
-    """Run regular calculation updates for the assigned stock list on a thread."""
+    """Run regular calculation updates without blocking the event loop."""
     if not tickers:
         logger.info("[STOCK CALCULATION] No tickers to process")
         return
 
     try:
-        logger.info("[STOCK CALCULATION] Starting thread to process %s tickers...", len(tickers))
-        
-        # Start calculation on a separate thread
-        calculation_thread = threading.Thread(
-            target=update_metadata_for_tickers,
-            args=(tickers, None),
-            name="stock-calculation-worker-thread",
-            daemon=False
-        )
-        calculation_thread.start()
-        logger.info("[STOCK CALCULATION] Thread started with ID: %s", calculation_thread.ident)
-        
-        # Wait for thread to complete
-        calculation_thread.join()
-        logger.info("[STOCK CALCULATION] Thread completed")
-        
+        logger.info("[STOCK CALCULATION] Dispatching async calculation for %s tickers...", len(tickers))
+        await asyncio.to_thread(update_metadata_for_tickers, tickers, None)
+        logger.info("[STOCK CALCULATION] Async calculation completed")
     except Exception as e:
         logger.error("Error processing stock calculation batch: %s", str(e))
 

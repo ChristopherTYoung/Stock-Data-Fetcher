@@ -116,7 +116,7 @@ class StockCalculator:
 
     @staticmethod
     def calculate_percent_change(history_data: pd.DataFrame, stock: Stock) -> Any:
-        """Calculate percent change from the last available close price using Polygon history data only."""
+        """Calculate day-over-day percent change using the last close from the last two trading dates."""
         logger.debug(f"Calculating percent change for symbol={stock.symbol}. history_data available: {isinstance(history_data, pd.DataFrame)}")
         
         df = history_data.copy() if isinstance(history_data, pd.DataFrame) else None
@@ -132,23 +132,32 @@ class StockCalculator:
                         df.index = pd.to_datetime(df.index)
                 
                 logger.debug(f"Converting history_data datetime index for {stock.symbol}")
-                combined = df
+                combined = df.sort_index()
                 
-                if not combined.empty and len(combined) > 1:
-                    current_price = combined['close'].iloc[-1]
-                    previous_close = combined['close'].iloc[-2]
-                    logger.debug(f"Percent change data for {stock.symbol}: previous_close={previous_close}, current_price={current_price}")
-                    
-                    if current_price is not None and previous_close not in (0, None):
-                        percent_change = ((current_price - previous_close) / previous_close) * 100
-                        logger.debug(f"Calculated percent change for {stock.symbol}: {percent_change:.2f}%")
-                        return percent_change
+                if not combined.empty:
+                    daily_closes = combined.groupby(combined.index.normalize())['close'].last()
+
+                    if len(daily_closes) > 1:
+                        previous_close = daily_closes.iloc[-2]
+                        current_price = daily_closes.iloc[-1]
+                        logger.debug(
+                            f"Percent change data for {stock.symbol}: previous_close={previous_close}, current_price={current_price}"
+                        )
+
+                        if current_price is not None and previous_close not in (0, None):
+                            percent_change = ((current_price - previous_close) / previous_close) * 100
+                            logger.debug(f"Calculated percent change for {stock.symbol}: {percent_change:.2f}%")
+                            return percent_change
+                        else:
+                            logger.warning(
+                                f"Invalid price data for {stock.symbol} - previous_close: {previous_close}, current_price: {current_price}"
+                            )
+                    elif len(daily_closes) == 1:
+                        logger.warning(
+                            f"Only one trading day available for {stock.symbol} - cannot calculate day-over-day percent change"
+                        )
                     else:
-                        logger.warning(f"Invalid price data for {stock.symbol} - previous_close: {previous_close}, current_price: {current_price}")
-                elif not combined.empty and len(combined) == 1:
-                    logger.warning(f"Only one data point available for {stock.symbol} - cannot calculate percent change")
-                else:
-                    logger.warning(f"Combined dataframe is empty for {stock.symbol}")
+                        logger.warning(f"Combined dataframe is empty for {stock.symbol}")
             except Exception as e:
                 logger.warning(f"Failed to calculate percent change from history_data for {stock.symbol}. Error: {type(e).__name__}: {e}", exc_info=True)
         
