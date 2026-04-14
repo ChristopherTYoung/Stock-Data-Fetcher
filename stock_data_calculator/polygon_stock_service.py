@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pandas as pd
 
 from polygon import RESTClient
-from stock_data_calculator.database import get_db, Stock
+from stock_data_calculator.database import get_db, Stock, StockHistory
 from stock_data_calculator.logging_config import setup_logging
 from sqlalchemy import select
 from stock_data_calculator.stock_calculator import StockCalculator
@@ -83,6 +83,64 @@ def _to_two_decimal_numeric(value):
     return Decimal(str(numeric_value)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
+def _load_history_dataframe(db, ticker: str, lookback_days: int = 370) -> pd.DataFrame:
+    """Load the most recent stock history rows for a ticker into a DataFrame."""
+    ticker = ticker.upper()
+    start_date = datetime.utcnow() - timedelta(days=lookback_days)
+
+    query = (
+        select(StockHistory)
+        .where(
+            StockHistory.stock_symbol == ticker,
+            StockHistory.day_and_time >= start_date,
+        )
+        .order_by(StockHistory.day_and_time.asc(), StockHistory.is_hourly.asc())
+    )
+
+    history_rows = db.execute(query).scalars().all()
+    if not isinstance(history_rows, list):
+        try:
+            history_rows = list(history_rows)
+        except TypeError:
+            history_rows = []
+
+    if not history_rows:
+        history_rows = (
+            db.execute(
+                select(StockHistory)
+                .where(StockHistory.stock_symbol == ticker)
+                .order_by(StockHistory.day_and_time.asc(), StockHistory.is_hourly.asc())
+            )
+            .scalars()
+            .all()
+        )
+        if not isinstance(history_rows, list):
+            try:
+                history_rows = list(history_rows)
+            except TypeError:
+                history_rows = []
+
+    if not history_rows:
+        return pd.DataFrame()
+
+    history_df = pd.DataFrame(
+        [
+            {
+                'timestamp': row.day_and_time,
+                'open': _to_builtin_number(row.open_price) / 100.0,
+                'high': _to_builtin_number(row.high) / 100.0,
+                'low': _to_builtin_number(row.low) / 100.0,
+                'close': _to_builtin_number(row.close_price) / 100.0,
+                'volume': _to_builtin_number(row.volume),
+            }
+            for row in history_rows
+        ]
+    )
+    history_df['timestamp'] = pd.to_datetime(history_df['timestamp'])
+    history_df.set_index('timestamp', inplace=True)
+    return history_df
+
+
 def update_stocks_in_db_from_polygon(
     stock_data: List[Dict[str, Any]],
     status_dict: Optional[Dict[str, int]] = None,
@@ -119,37 +177,6 @@ def update_stocks_in_db_from_polygon(
         try:
             # Get ticker details from Polygon
             details = client.get_ticker_details(ticker)
-
-            # Get historical data from Polygon for price calculations
-            history_df = pd.DataFrame()
-            try:
-                end_date = datetime.utcnow().date()
-                start_date = end_date - timedelta(days=370)
-                bars = client.list_aggs(
-                    ticker=ticker,
-                    multiplier=1,
-                    timespan='day',
-                    from_=start_date.strftime('%Y-%m-%d'),
-                    to=end_date.strftime('%Y-%m-%d'),
-                    adjusted=True,
-                    sort='asc',
-                )
-                history_rows = []
-                for bar in bars:
-                    history_rows.append({
-                        'timestamp': datetime.fromtimestamp(bar.timestamp / 1000),
-                        'open': bar.open,
-                        'high': bar.high,
-                        'low': bar.low,
-                        'close': bar.close,
-                        'volume': bar.volume,
-                    })
-                if history_rows:
-                    history_df = pd.DataFrame(history_rows)
-                    history_df['timestamp'] = pd.to_datetime(history_df['timestamp'])
-                    history_df.set_index('timestamp', inplace=True)
-            except Exception:
-                history_df = pd.DataFrame()
 
             list_date = None
             if hasattr(details, 'list_date') and details.list_date:
@@ -191,6 +218,8 @@ def update_stocks_in_db_from_polygon(
             # Upsert the stock row
             with get_db() as db:
                 existing = db.execute(select(Stock).where(Stock.symbol == ticker)).first()
+
+                history_df = _load_history_dataframe(db, ticker)
 
                 if existing is not None:
                     stock_for_calc = existing[0]
@@ -302,7 +331,7 @@ def update_stocks_in_db_from_polygon(
                 
                 # Detect candlestick pattern for the last candle
                 last_candle_pattern = StockCalculator.calculate_last_candlestick_pattern(history_df, stock_for_calc)
-                if last_candle_pattern:
+                if last_candle_pattern and _column_allowed('last_candle'):
                     defaults['last_candle'] = last_candle_pattern
                     logger.info("[%s] detected candlestick pattern: %s", ticker, last_candle_pattern)
 

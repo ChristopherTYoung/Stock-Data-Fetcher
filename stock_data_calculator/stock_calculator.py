@@ -13,20 +13,38 @@ class StockCalculator:
     """Static methods for calculating stock metrics from historical and DB data."""
 
     @staticmethod
+    def _normalize_history_dataframe(history_data: pd.DataFrame) -> Optional[pd.DataFrame]:
+        """Return a sorted copy of history data indexed by timestamp."""
+        if not isinstance(history_data, pd.DataFrame) or history_data.empty:
+            return None
+
+        df = history_data.copy()
+        try:
+            if not isinstance(df.index, pd.DatetimeIndex):
+                if 'timestamp' in df.columns:
+                    df['timestamp'] = pd.to_datetime(df['timestamp'])
+                    df.set_index('timestamp', inplace=True)
+                else:
+                    df.index = pd.to_datetime(df.index)
+
+            df.sort_index(inplace=True)
+            return df
+        except Exception as e:
+            logger.warning(
+                f"Failed to normalize history data. Error: {type(e).__name__}: {e}",
+                exc_info=True,
+            )
+            return None
+
+    @staticmethod
     def calculate_price(history_data: pd.DataFrame, stock: Stock) -> Any:
-        """Calculate the latest close price from Polygon history data only."""
+        """Calculate the latest close price from stock history data only."""
         symbol = stock.symbol if stock and hasattr(stock, 'symbol') else 'UNKNOWN'
         logger.debug(f"Calculating price for {symbol}. history_data available: {isinstance(history_data, pd.DataFrame)}")
-        
-        if isinstance(history_data, pd.DataFrame) and not history_data.empty:
+
+        df = StockCalculator._normalize_history_dataframe(history_data)
+        if df is not None:
             try:
-                df = history_data.copy()
-                if not isinstance(df.index, pd.DatetimeIndex):
-                    if 'timestamp' in df.columns:
-                        df['timestamp'] = pd.to_datetime(df['timestamp'])
-                        df.set_index('timestamp', inplace=True)
-                    else:
-                        df.index = pd.to_datetime(df.index)
                 price = df['close'].iloc[-1]
                 logger.debug(f"Calculated price from history_data for {symbol}: {price}")
                 return price
@@ -38,37 +56,23 @@ class StockCalculator:
 
     @staticmethod
     def calculate_high52(history_data: pd.DataFrame, stock: Stock) -> Any:
-        """Calculate 52-week high from Polygon history data only."""
+        """Calculate 52-week high from stock history data only."""
         logger.debug(f"Calculating 52-week high for symbol={stock.symbol}. history_data available: {isinstance(history_data, pd.DataFrame)}")
-        
-        df = history_data.copy() if isinstance(history_data, pd.DataFrame) else None
-        
-        if df is not None and not df.empty:
+
+        df = StockCalculator._normalize_history_dataframe(history_data)
+
+        if df is not None:
             try:
-                # Ensure proper datetime index
-                if not isinstance(df.index, pd.DatetimeIndex):
-                    if 'timestamp' in df.columns:
-                        df['timestamp'] = pd.to_datetime(df['timestamp'])
-                        df.set_index('timestamp', inplace=True)
-                    else:
-                        df.index = pd.to_datetime(df.index)
-                
-                logger.debug(f"Converting history_data datetime index for {stock.symbol}")
-                combined = df
-                
-                if not combined.empty:
-                    idx_max = combined.index.max()
-                    one_year_ago = idx_max - pd.Timedelta(days=365)
-                    subset = combined[combined.index >= one_year_ago]
-                    logger.debug(f"52-week subset for {stock.symbol}: {len(subset)} records from {one_year_ago.date()} to {idx_max.date()}")
-                    if not subset.empty:
-                        high_52 = subset['high'].max()
-                        logger.debug(f"52-week high for {stock.symbol}: {high_52}")
-                        return high_52
-                    else:
-                        logger.warning(f"No data found in 52-week window for {stock.symbol}")
+                idx_max = df.index.max()
+                one_year_ago = idx_max - pd.Timedelta(days=365)
+                subset = df[df.index >= one_year_ago]
+                logger.debug(f"52-week subset for {stock.symbol}: {len(subset)} records from {one_year_ago.date()} to {idx_max.date()}")
+                if not subset.empty:
+                    high_52 = subset['high'].max()
+                    logger.debug(f"52-week high for {stock.symbol}: {high_52}")
+                    return high_52
                 else:
-                    logger.warning(f"Combined dataframe is empty for {stock.symbol}")
+                    logger.warning(f"No data found in 52-week window for {stock.symbol}")
             except Exception as e:
                 logger.warning(f"Failed to calculate 52-week high from history_data for {stock.symbol}. Error: {type(e).__name__}: {e}", exc_info=True)
         
@@ -77,37 +81,23 @@ class StockCalculator:
 
     @staticmethod
     def calculate_low52(history_data: pd.DataFrame, stock: Stock) -> Any:
-        """Calculate 52-week low from Polygon history data only."""
+        """Calculate 52-week low from stock history data only."""
         logger.debug(f"Calculating 52-week low for symbol={stock.symbol}. history_data available: {isinstance(history_data, pd.DataFrame)}")
-        
-        df = history_data.copy() if isinstance(history_data, pd.DataFrame) else None
-        
-        if df is not None and not df.empty:
+
+        df = StockCalculator._normalize_history_dataframe(history_data)
+
+        if df is not None:
             try:
-                # Ensure proper datetime index
-                if not isinstance(df.index, pd.DatetimeIndex):
-                    if 'timestamp' in df.columns:
-                        df['timestamp'] = pd.to_datetime(df['timestamp'])
-                        df.set_index('timestamp', inplace=True)
-                    else:
-                        df.index = pd.to_datetime(df.index)
-                
-                logger.debug(f"Converting history_data datetime index for {stock.symbol}")
-                combined = df
-                
-                if not combined.empty:
-                    idx_max = combined.index.max()
-                    one_year_ago = idx_max - pd.Timedelta(days=365)
-                    subset = combined[combined.index >= one_year_ago]
-                    logger.debug(f"52-week subset for {stock.symbol}: {len(subset)} records from {one_year_ago.date()} to {idx_max.date()}")
-                    if not subset.empty:
-                        low_52 = subset['low'].min()
-                        logger.debug(f"52-week low for {stock.symbol}: {low_52}")
-                        return low_52
-                    else:
-                        logger.warning(f"No data found in 52-week window for {stock.symbol}")
+                idx_max = df.index.max()
+                one_year_ago = idx_max - pd.Timedelta(days=365)
+                subset = df[df.index >= one_year_ago]
+                logger.debug(f"52-week subset for {stock.symbol}: {len(subset)} records from {one_year_ago.date()} to {idx_max.date()}")
+                if not subset.empty:
+                    low_52 = subset['low'].min()
+                    logger.debug(f"52-week low for {stock.symbol}: {low_52}")
+                    return low_52
                 else:
-                    logger.warning(f"Combined dataframe is empty for {stock.symbol}")
+                    logger.warning(f"No data found in 52-week window for {stock.symbol}")
             except Exception as e:
                 logger.warning(f"Failed to calculate 52-week low from history_data for {stock.symbol}. Error: {type(e).__name__}: {e}", exc_info=True)
         
@@ -118,46 +108,32 @@ class StockCalculator:
     def calculate_percent_change(history_data: pd.DataFrame, stock: Stock) -> Any:
         """Calculate day-over-day percent change using the last close from the last two trading dates."""
         logger.debug(f"Calculating percent change for symbol={stock.symbol}. history_data available: {isinstance(history_data, pd.DataFrame)}")
-        
-        df = history_data.copy() if isinstance(history_data, pd.DataFrame) else None
-        
-        if df is not None and not df.empty:
+
+        df = StockCalculator._normalize_history_dataframe(history_data)
+
+        if df is not None:
             try:
-                # Ensure proper datetime index
-                if not isinstance(df.index, pd.DatetimeIndex):
-                    if 'timestamp' in df.columns:
-                        df['timestamp'] = pd.to_datetime(df['timestamp'])
-                        df.set_index('timestamp', inplace=True)
+                daily_closes = df.groupby(df.index.normalize())['close'].last()
+
+                if len(daily_closes) > 1:
+                    previous_close = daily_closes.iloc[-2]
+                    current_price = daily_closes.iloc[-1]
+                    logger.debug(
+                        f"Percent change data for {stock.symbol}: previous_close={previous_close}, current_price={current_price}"
+                    )
+
+                    if current_price is not None and previous_close not in (0, None):
+                        percent_change = ((current_price - previous_close) / previous_close) * 100
+                        logger.debug(f"Calculated percent change for {stock.symbol}: {percent_change:.2f}%")
+                        return percent_change
                     else:
-                        df.index = pd.to_datetime(df.index)
-                
-                logger.debug(f"Converting history_data datetime index for {stock.symbol}")
-                combined = df.sort_index()
-                
-                if not combined.empty:
-                    daily_closes = combined.groupby(combined.index.normalize())['close'].last()
-
-                    if len(daily_closes) > 1:
-                        previous_close = daily_closes.iloc[-2]
-                        current_price = daily_closes.iloc[-1]
-                        logger.debug(
-                            f"Percent change data for {stock.symbol}: previous_close={previous_close}, current_price={current_price}"
-                        )
-
-                        if current_price is not None and previous_close not in (0, None):
-                            percent_change = ((current_price - previous_close) / previous_close) * 100
-                            logger.debug(f"Calculated percent change for {stock.symbol}: {percent_change:.2f}%")
-                            return percent_change
-                        else:
-                            logger.warning(
-                                f"Invalid price data for {stock.symbol} - previous_close: {previous_close}, current_price: {current_price}"
-                            )
-                    elif len(daily_closes) == 1:
                         logger.warning(
-                            f"Only one trading day available for {stock.symbol} - cannot calculate day-over-day percent change"
+                            f"Invalid price data for {stock.symbol} - previous_close: {previous_close}, current_price: {current_price}"
                         )
-                    else:
-                        logger.warning(f"Combined dataframe is empty for {stock.symbol}")
+                elif len(daily_closes) == 1:
+                    logger.warning(
+                        f"Only one trading day available for {stock.symbol} - cannot calculate day-over-day percent change"
+                    )
             except Exception as e:
                 logger.warning(f"Failed to calculate percent change from history_data for {stock.symbol}. Error: {type(e).__name__}: {e}", exc_info=True)
         
@@ -213,13 +189,13 @@ class StockCalculator:
         """
         symbol = stock.symbol if stock and hasattr(stock, 'symbol') else 'UNKNOWN'
         
-        if not isinstance(history_data, pd.DataFrame) or history_data.empty:
+        df = StockCalculator._normalize_history_dataframe(history_data)
+
+        if df is None:
             logger.debug(f"No history data available for candlestick pattern detection for {symbol}")
             return None
         
         try:
-            df = history_data.copy()
-            
             # Get the last row (most recent candle)
             last_candle = df.iloc[-1]
             

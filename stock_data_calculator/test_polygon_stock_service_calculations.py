@@ -6,7 +6,7 @@ import pytest
 import pandas as pd
 
 from stock_data_calculator import polygon_stock_service
-from stock_data_calculator.database import Stock, get_db
+from stock_data_calculator.database import Stock, StockHistory, get_db
 from quarterly_data_fetcher import quarterly_stock_service
 
 
@@ -118,6 +118,23 @@ def _make_report(year: int, eps: float):
     )
 
 
+def _seed_stock_history(symbol: str, bars: list[SimpleNamespace], is_hourly: bool = True) -> None:
+    with get_db() as db:
+        for bar in bars:
+            db.add(
+                StockHistory(
+                    stock_symbol=symbol,
+                    day_and_time=datetime.fromtimestamp(bar.timestamp / 1000),
+                    is_hourly=is_hourly,
+                    open_price=int(bar.open * 100),
+                    close_price=int(bar.close * 100),
+                    high=int(bar.high * 100),
+                    low=int(bar.low * 100),
+                    volume=int(bar.volume),
+                )
+            )
+
+
 def test_update_stocks_persists_calculated_fields(monkeypatch, fake_details):
     fake_details.weighted_shares_outstanding = 100_000_000
     now = datetime.utcnow().replace(hour=12, minute=0, second=0, microsecond=0)
@@ -150,6 +167,8 @@ def test_update_stocks_persists_calculated_fields(monkeypatch, fake_details):
         debt_to_equity=0.5,
     )
     monkeypatch.setattr(quarterly_stock_service.yf, "Ticker", lambda ticker: fake_yf_ticker)
+
+    _seed_stock_history("TEST", bars)
 
     quarterly_updated = quarterly_stock_service.update_quarterly_metrics_for_tickers(["TEST"])
     assert quarterly_updated == 1
@@ -205,6 +224,8 @@ def test_update_stocks_handles_missing_growth_denominator(monkeypatch, fake_deta
     )
     monkeypatch.setattr(quarterly_stock_service.yf, "Ticker", lambda ticker: fake_yf_ticker)
 
+    _seed_stock_history("NOGROW", bars)
+
     # First: quarterly update to populate database (with no growth since net_income_4q_ago=0)
     quarterly_updated = quarterly_stock_service.update_quarterly_metrics_for_tickers(["NOGROW"])
     assert quarterly_updated == 1
@@ -249,6 +270,8 @@ def test_update_stocks_handles_missing_outstanding_shares_for_revenue_per_share(
         net_income_4q_ago=100_000_000
     )
     monkeypatch.setattr(quarterly_stock_service.yf, "Ticker", lambda ticker: fake_yf_ticker)
+
+    _seed_stock_history("NOSHARES", bars)
 
     updated = polygon_stock_service.update_stocks_in_db_from_polygon([{"symbol": "NOSHARES"}])
     assert updated == 1
